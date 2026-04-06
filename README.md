@@ -11,30 +11,6 @@
 
 ---
 
-```
-      ╔══════════════════════════════════════════════╗
-      ║          F R E Q U E N C Y   P H A S E R    ║
-      ║      ≋  G R O U N D - F R E Q   T O O L  ≋  ║
-      ╚══════════════════════════════════════════════╝
-
-              ___
-             /o·o\       "THE PHASER"
-             \|=|/
-            __|_|__
-           /  | |  \       Driving frequencies
-              ║             into the earth —
-              ║           one oscillator at a time.
-              ║
-         ~~~~╬~~~~
-        ~~~~~║~~~~~   ≋ ≋ 7.83 Hz ≋ ≋
-       ~~~~~~║~~~~~~
-      ≋ ≋ ≋ ≋║≋ ≋ ≋ ≋
-     ≋ ≋ ≋ ≋ ╬ ≋ ≋ ≋ ≋
-    ≋ ≋ ≋ ≋ ≋ ≋ ≋ ≋ ≋ ≋
-```
-
----
-
 ## Features
 
 ### Multi-Oscillator Engine
