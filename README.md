@@ -17,6 +17,11 @@
 
 ---
 
+> *"In theory, if you load a Taylor Swift MP3 and tune the resonance dial to the Schumann frequency,
+> you could drill through stone. We accept no liability for geological incidents."*
+
+---
+
 ## Features
 
 ### Multi-Oscillator Engine
@@ -75,7 +80,8 @@ Layer up to 8 voices as a **chord or scale**, rooted at any frequency:
 | `+ / -` | Master volume ±5% |
 | `Tab / Shift+Tab` | Cycle active oscillator |
 | `W` | Next waveform |
-| `F` | Cycle filter (None → Orchestral → …) |
+| `F` | Cycle filter (None → Orchestral → Choir → Drum → Shofar → File) |
+| `L` | Load WAV/MP3 as custom file filter |
 | `S` | Cycle step mode (Fine / Medium / Coarse) |
 | `E` | Enable / disable active oscillator |
 | `Y` | Enable polyphonic mode + open Poly Panel |

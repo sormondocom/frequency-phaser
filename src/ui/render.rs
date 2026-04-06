@@ -49,6 +49,8 @@ pub fn render(frame: &mut Frame, app: &App) {
             render_save_overlay(frame, *freq, name_buf, area),
         InputMode::DigitTune { cursor } =>
             render_digit_tune_overlay(frame, app, *cursor, area),
+        InputMode::FilePathEntry { buffer, error } =>
+            render_file_path_overlay(frame, buffer, error.as_deref(), area),
         _ => {}
     }
 }
@@ -247,8 +249,11 @@ fn render_osc_controls(frame: &mut Frame, app: &App, idx: usize, area: Rect) {
     // Channel selector
     let chan_line = channel_line(channel);
 
-    // Filter selector
-    let filt_line = filter_line(filter);
+    // Filter selector — show loaded filename when Custom is active
+    let file_name = app.state.file_name.try_lock()
+        .map(|g| g.clone())
+        .unwrap_or_default();
+    let filt_line = filter_line(filter, &file_name);
 
     // Step mode (active oscillator only)
     let step_line = if is_active {
@@ -317,10 +322,17 @@ fn channel_line(current: Channel) -> Line<'static> {
     Line::from(spans)
 }
 
-fn filter_line(current: crate::state::Filter) -> Line<'static> {
+fn filter_line(current: crate::state::Filter, file_name: &str) -> Line<'static> {
     let mut spans = vec![Span::raw("Filt: ")];
     for &f in crate::state::Filter::all() {
         let selected = f == current;
+        let label = if selected && f == crate::state::Filter::Custom && !file_name.is_empty() {
+            // Truncate filename to keep the line short
+            let trunc = if file_name.len() > 10 { &file_name[..10] } else { file_name };
+            format!("[{}]", trunc)
+        } else {
+            format!("[{}]", f.label())
+        };
         let style = if selected {
             Style::default()
                 .fg(Color::Black)
@@ -329,7 +341,7 @@ fn filter_line(current: crate::state::Filter) -> Line<'static> {
         } else {
             Style::default().fg(C_INACTIVE)
         };
-        spans.push(Span::styled(format!("[{}]", f.label()), style));
+        spans.push(Span::styled(label, style));
         spans.push(Span::raw(" "));
     }
     Line::from(spans)
@@ -418,8 +430,8 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let help = "[ENTER]Play  [←→]Tune(hold=accel)  [⇧←→]Coarse  [S]Step  [PgUp/Dn]×10  \
-                [W]Wave  [F]Filter  [C]Chan  [↑↓]Vol  [N]Save freq  [Y]Poly  \
-                [P]Presets  [F1]Add  [F2]Del  [Q]Quit";
+                [W]Wave  [F]Filter  [L]Load file filter  [C]Chan  [↑↓]Vol  \
+                [N]Save freq  [/]Digit tuner  [Y]Poly  [P]Presets  [F1]Add  [F2]Del  [Q]Quit";
 
     let line = Line::from(vec![
         Span::styled(play_str, Style::default().fg(play_color).add_modifier(Modifier::BOLD)),
@@ -849,6 +861,75 @@ fn render_digit_tune_overlay(frame: &mut Frame, app: &App, cursor: u8, area: Rec
         Line::raw(""),
     ]);
     frame.render_widget(Paragraph::new(text), inner);
+}
+
+/// Overlay for loading a WAV/MP3 file as the custom filter.
+fn render_file_path_overlay(frame: &mut Frame, buffer: &str, error: Option<&str>, area: Rect) {
+    let height = if error.is_some() { 13 } else { 12 };
+    let popup = centered_rect(66, height, area);
+    frame.render_widget(Clear, popup);
+
+    let border_color = if error.is_some() { Color::Red } else { Color::Magenta };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Load Audio File as Filter [L] ")
+        .border_style(Style::default().fg(border_color).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    // Show current working directory so the user knows the base for relative paths
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    let cwd_line = Line::from(vec![
+        Span::styled("  Dir:  ", Style::default().fg(C_INACTIVE)),
+        Span::styled(cwd, Style::default().fg(Color::Yellow)),
+    ]);
+
+    let input_line = Line::from(vec![
+        Span::styled("  Path: ", Style::default().fg(C_INACTIVE)),
+        Span::styled(
+            format!("{}_", buffer),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+
+    let mut lines = vec![
+        Line::raw(""),
+        cwd_line,
+        Line::raw(""),
+        input_line,
+        Line::raw(""),
+    ];
+
+    // Error message — shown in red when the last load attempt failed
+    if let Some(err) = error {
+        let short = if err.len() > 58 { &err[..58] } else { err };
+        lines.push(Line::from(Span::styled(
+            format!("  ✗ {}", short),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::raw(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "  Supported: .wav  .mp3",
+        Style::default().fg(C_INACTIVE),
+    )));
+    lines.push(Line::from(Span::styled(
+        "  Tip: use full path (e.g. C:\\Users\\you\\Music\\song.mp3)",
+        Style::default().fg(C_INACTIVE),
+    )));
+    lines.push(Line::from(Span::styled(
+        "  [Enter] load   [Esc] cancel",
+        Style::default().fg(C_INACTIVE),
+    )));
+
+    frame.render_widget(Paragraph::new(Text::from(lines)), inner);
 }
 
 /// Overlay shown when naming a custom preset to save.

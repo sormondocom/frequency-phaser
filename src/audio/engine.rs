@@ -41,6 +41,9 @@ impl AudioEngine {
 
         stream.play()?;
 
+        // Publish sample rate so the UI thread can use it for resampling
+        state.set_device_sample_rate(sample_rate);
+
         Ok(Self {
             _stream: stream,
             sample_rate,
@@ -62,9 +65,18 @@ where
 {
     let mut oscillators: Vec<OscillatorRt> = (0..MAX_OSCILLATORS).map(|_| OscillatorRt::new()).collect();
 
+    // Cached file samples — updated cheaply on each buffer via try_lock.
+    let mut cached_samples: Option<Arc<Vec<f32>>> = None;
+
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            // Opportunistically refresh the samples cache (non-blocking).
+            if let Ok(guard) = state.file_samples.try_lock() {
+                cached_samples = guard.clone();
+            }
+            let file_slice: Option<&[f32]> = cached_samples.as_deref().map(|v| v.as_slice());
+
             if !state.is_playing() {
                 for s in data.iter_mut() {
                     *s = T::from_sample(0.0f32);
@@ -83,8 +95,7 @@ where
                 for i in 0..osc_count {
                     let osc_s = &state.oscillators[i];
                     if !osc_s.is_enabled() {
-                        // Advance phases to keep timing consistent when re-enabled
-                        let _ = oscillators[i].tick(osc_s.get_waveform(), osc_s.get_filter(), osc_s.get_freq(), sample_rate);
+                        let _ = oscillators[i].tick(osc_s.get_waveform(), osc_s.get_filter(), osc_s.get_freq(), sample_rate, file_slice);
                         continue;
                     }
 
@@ -92,9 +103,9 @@ where
                     let amp      = osc_s.get_amp();
                     let waveform = osc_s.get_waveform();
                     let filter   = osc_s.get_filter();
-                    let chan      = osc_s.get_channel();
+                    let chan     = osc_s.get_channel();
 
-                    let s = oscillators[i].tick(waveform, filter, freq, sample_rate) * amp;
+                    let s = oscillators[i].tick(waveform, filter, freq, sample_rate, file_slice) * amp;
 
                     match chan {
                         Channel::Both  => { left += s; right += s; }
@@ -104,7 +115,6 @@ where
                     active += 1;
                 }
 
-                // Soft normalise to prevent clipping with many oscillators
                 let norm = if active > 1 { 1.0 / (active as f64).sqrt() } else { 1.0 };
                 let l = ((left  * norm * master_vol) as f32).clamp(-1.0, 1.0);
                 let r = ((right * norm * master_vol) as f32).clamp(-1.0, 1.0);

@@ -1,8 +1,9 @@
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
+use crate::audio::file_filter::{decode_audio, resample};
 use crate::music::PolyConfig;
 use crate::presets::PRESETS;
 use crate::state::{AppState, Waveform, MAX_FREQ, MIN_FREQ};
@@ -61,6 +62,8 @@ pub enum InputMode {
     PolyPanel,
     /// Name-entry dialog for saving a custom preset.
     SavePreset { freq: f64, waveform: Waveform, name_buf: String },
+    /// File path entry for loading a WAV/MP3 as the custom filter.
+    FilePathEntry { buffer: String, error: Option<String> },
     /// Digit-zone scrubber — cursor selects a place-value column to spin.
     /// Format: `DDDDD.DDD Hz`  columns 0-4 = integer part, 5-7 = fractional.
     DigitTune { cursor: u8 },
@@ -137,6 +140,7 @@ impl App {
             InputMode::PolyPanel                         => self.handle_poly_panel(event),
             InputMode::SavePreset { freq, waveform, name_buf } =>
                 self.handle_save_preset(event, freq, waveform, name_buf),
+            InputMode::FilePathEntry { buffer, error } => self.handle_file_path_entry(event, buffer, error),
             InputMode::DigitTune { cursor }              => self.handle_digit_tune(event, cursor),
         }
     }
@@ -314,6 +318,11 @@ impl App {
                         scroll:   sel.saturating_sub(4),
                     };
                 }
+            }
+
+            // Load audio file as custom filter
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                self.mode = InputMode::FilePathEntry { buffer: String::new(), error: None };
             }
 
             // Digit-zone tuner
@@ -540,6 +549,70 @@ impl App {
             _ => {}
         }
         true
+    }
+
+    // ── File path entry ───────────────────────────────────────────────────────
+
+    fn handle_file_path_entry(&mut self, event: Event, mut buffer: String, _error: Option<String>) -> bool {
+        let Event::Key(KeyEvent { code, kind, .. }) = event else { return true; };
+        if kind != KeyEventKind::Press { return true; }
+
+        match code {
+            KeyCode::Char(c) => {
+                buffer.push(c);
+                self.mode = InputMode::FilePathEntry { buffer, error: None };
+            }
+            KeyCode::Backspace => {
+                buffer.pop();
+                self.mode = InputMode::FilePathEntry { buffer, error: None };
+            }
+            KeyCode::Enter => {
+                let path = buffer.trim().to_string();
+                match self.load_file_filter(&path) {
+                    Ok(()) => {
+                        self.mode = InputMode::Normal;
+                    }
+                    Err(msg) => {
+                        // Stay in the overlay with the error shown and buffer intact
+                        self.mode = InputMode::FilePathEntry { buffer, error: Some(msg) };
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                self.mode = InputMode::Normal;
+            }
+            _ => {
+                self.mode = InputMode::FilePathEntry { buffer, error: None };
+            }
+        }
+        true
+    }
+
+    fn load_file_filter(&mut self, path: &str) -> Result<(), String> {
+        // Strip surrounding quotes in case the user copy-pasted a quoted path
+        let path = path.trim().trim_matches('"').trim_matches('\'');
+
+        let (raw_mono, file_sr) = decode_audio(path)
+            .map_err(|e| format!("{e}"))?;
+
+        let device_sr = self.state.get_device_sample_rate() as u32;
+        let at_device = resample(&raw_mono, file_sr, device_sr);
+
+        if let Ok(mut guard) = self.state.file_samples.lock() {
+            *guard = Some(Arc::new(at_device));
+        }
+
+        let display_name = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path)
+            .to_string();
+        if let Ok(mut guard) = self.state.file_name.lock() {
+            *guard = display_name.clone();
+        }
+
+        self.set_status(format!("Loaded: {}  →  [F] to FILE filter, Enter to play", display_name));
+        Ok(())
     }
 
     // ── Digit-zone tuner ─────────────────────────────────────────────────────

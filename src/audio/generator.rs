@@ -1,3 +1,4 @@
+use crate::audio::file_filter::FilePlaybackState;
 use crate::state::{Filter, Waveform};
 use std::f64::consts::PI;
 
@@ -374,11 +375,12 @@ impl ShofarState {
 // through whichever is active without allocating on the hot path.
 
 pub struct OscillatorRt {
-    pub base:       Oscillator,
+    pub base:      Oscillator,
     pub orchestral: OrchestrialState,
-    pub choir:      ChoirState,
-    pub bass_drum:  BassDrumState,
-    pub shofar:     ShofarState,
+    pub choir:     ChoirState,
+    pub bass_drum: BassDrumState,
+    pub shofar:    ShofarState,
+    pub file:      FilePlaybackState,
 }
 
 impl OscillatorRt {
@@ -389,19 +391,44 @@ impl OscillatorRt {
             choir:      ChoirState::new(),
             bass_drum:  BassDrumState::new(),
             shofar:     ShofarState::new(),
+            file:       FilePlaybackState::new(),
         }
     }
 
     /// Generate one sample, routing through the active filter.
-    pub fn tick(&mut self, waveform: Waveform, filter: Filter, freq: f64, sample_rate: f64) -> f64 {
-        // Always advance base phase so the scope stays in sync.
-        let base_sample = self.base.tick(waveform, freq, sample_rate);
+    /// `file_samples` is the looping audio buffer used by `Filter::Custom`.
+    pub fn tick(
+        &mut self,
+        waveform:     Waveform,
+        filter:       Filter,
+        freq:         f64,
+        sample_rate:  f64,
+        file_samples: Option<&[f32]>,
+    ) -> f64 {
         match filter {
-            Filter::None       => base_sample,
-            Filter::Orchestral => self.orchestral.tick(freq, sample_rate),
-            Filter::Choir      => self.choir.tick(freq, sample_rate),
-            Filter::BassDrum   => self.bass_drum.tick(freq, sample_rate),
-            Filter::Shofar     => self.shofar.tick(freq, sample_rate),
+            Filter::Custom => {
+                // File plays back; oscillator frequency drives the bandpass centre.
+                // Don't advance the base oscillator — the file IS the source.
+                if let Some(samples) = file_samples {
+                    self.file.tick(samples, freq as f32, sample_rate as f32) as f64
+                } else {
+                    // No file loaded — silence in Custom mode until one is loaded.
+                    self.base.tick(waveform, freq, sample_rate);
+                    0.0
+                }
+            }
+            _ => {
+                // All other filters: advance base oscillator as the source.
+                let base_sample = self.base.tick(waveform, freq, sample_rate);
+                match filter {
+                    Filter::None       => base_sample,
+                    Filter::Orchestral => self.orchestral.tick(freq, sample_rate),
+                    Filter::Choir      => self.choir.tick(freq, sample_rate),
+                    Filter::BassDrum   => self.bass_drum.tick(freq, sample_rate),
+                    Filter::Shofar     => self.shofar.tick(freq, sample_rate),
+                    Filter::Custom     => unreachable!(),
+                }
+            }
         }
     }
 }

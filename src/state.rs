@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 pub const MAX_OSCILLATORS: usize = 8;
@@ -131,6 +131,8 @@ pub enum Filter {
     Choir      = 2,
     BassDrum   = 3,
     Shofar     = 4,
+    /// FIR filter built from a user-loaded WAV/MP3 file.
+    Custom     = 5,
 }
 
 impl Filter {
@@ -140,6 +142,7 @@ impl Filter {
             2 => Self::Choir,
             3 => Self::BassDrum,
             4 => Self::Shofar,
+            5 => Self::Custom,
             _ => Self::None,
         }
     }
@@ -151,6 +154,7 @@ impl Filter {
             Self::Choir      => "CHOIR",
             Self::BassDrum   => "DRUM",
             Self::Shofar     => "SHOFAR",
+            Self::Custom     => "FILE",
         }
     }
 
@@ -161,6 +165,7 @@ impl Filter {
             Self::Choir      => "Angelic choir",
             Self::BassDrum   => "Tribal bass drum",
             Self::Shofar     => "Hebrew shofar",
+            Self::Custom     => "Custom file filter",
         }
     }
 
@@ -170,14 +175,15 @@ impl Filter {
             Self::Orchestral => Self::Choir,
             Self::Choir      => Self::BassDrum,
             Self::BassDrum   => Self::Shofar,
-            Self::Shofar     => Self::None,
+            Self::Shofar     => Self::Custom,
+            Self::Custom     => Self::None,
         }
     }
 
     pub fn all() -> &'static [Filter] {
-        static ALL: [Filter; 5] = [
+        static ALL: [Filter; 6] = [
             Filter::None, Filter::Orchestral, Filter::Choir,
-            Filter::BassDrum, Filter::Shofar,
+            Filter::BassDrum, Filter::Shofar, Filter::Custom,
         ];
         &ALL
     }
@@ -239,6 +245,13 @@ pub struct AppState {
     master_volume:     AtomicU64,
     pub playing:       AtomicBool,
     pub osc_count:     AtomicU32,
+    /// Device sample rate — written once by AudioEngine, read by file loader.
+    pub device_sample_rate: AtomicU64,
+    /// Decoded, resampled audio samples from the loaded file.
+    /// The audio thread reads these as looping playback when Filter::Custom is active.
+    pub file_samples: Mutex<Option<Arc<Vec<f32>>>>,
+    /// Display name of the loaded file (filename only).
+    pub file_name: Mutex<String>,
 }
 
 impl AppState {
@@ -255,9 +268,12 @@ impl AppState {
 
         Arc::new(Self {
             oscillators,
-            master_volume: AtomicU64::new(0.8f64.to_bits()),
-            playing:       AtomicBool::new(false),
-            osc_count:     AtomicU32::new(1),
+            master_volume:      AtomicU64::new(0.8f64.to_bits()),
+            playing:            AtomicBool::new(false),
+            osc_count:          AtomicU32::new(1),
+            device_sample_rate: AtomicU64::new(44_100f64.to_bits()),
+            file_samples:       Mutex::new(None),
+            file_name:          Mutex::new(String::new()),
         })
     }
 
@@ -265,6 +281,8 @@ impl AppState {
     pub fn set_master_vol(&self, v: f64) { store_f64(&self.master_volume, v.clamp(0.0, 1.0)); }
     pub fn is_playing(&self)    -> bool  { self.playing.load(Ordering::Relaxed) }
     pub fn get_osc_count(&self) -> usize { self.osc_count.load(Ordering::Relaxed) as usize }
+    pub fn get_device_sample_rate(&self) -> f64 { load_f64(&self.device_sample_rate) }
+    pub fn set_device_sample_rate(&self, sr: f64) { store_f64(&self.device_sample_rate, sr); }
 
     /// Add a new oscillator. Returns true if successful.
     pub fn add_oscillator(&self) -> bool {

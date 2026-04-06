@@ -9,10 +9,13 @@ name = "frequency-phaser"
 path = "src/main.rs"
 
 [dependencies]
-cpal    = "0.15"
-ratatui = "0.29"
+cpal      = "0.15"
+ratatui   = "0.29"
 crossterm = { version = "0.28", features = [] }
-anyhow  = "1"
+anyhow    = "1"
+symphonia = { version = "0.5", default-features = false, features = [
+    "mp3", "wav", "pcm", "adpcm",
+] }
 
 [profile.release]
 opt-level = 3
