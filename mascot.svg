@@ -1,0 +1,330 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 500" width="380" height="500">
+  <defs>
+    <!-- Gold leaf texture via subtle noise-like pattern -->
+    <pattern id="goldPattern" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="8" fill="#C9941A"/>
+      <rect x="0" y="0" width="4" height="4" fill="#D4A827" opacity="0.6"/>
+      <rect x="4" y="4" width="4" height="4" fill="#D4A827" opacity="0.6"/>
+    </pattern>
+    <!-- Border cross-hatch pattern -->
+    <pattern id="borderPattern" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="#8B4513"/>
+      <line x1="0" y1="6" x2="12" y2="6" stroke="#5A2A00" stroke-width="0.5"/>
+      <line x1="6" y1="0" x2="6" y2="12" stroke="#5A2A00" stroke-width="0.5"/>
+    </pattern>
+    <filter id="pressed">
+      <feDropShadow dx="1" dy="1" stdDeviation="1" flood-color="#00000044"/>
+    </filter>
+  </defs>
+
+  <!-- ── OUTER FRAME (dark wood/tempera board) ── -->
+  <rect width="380" height="500" fill="#3A1A00" rx="4"/>
+
+  <!-- ── INNER BORDER ORNAMENT ── -->
+  <!-- Outer gold border line -->
+  <rect x="8" y="8" width="364" height="484" fill="none"
+        stroke="#B8860B" stroke-width="2.5" rx="2"/>
+  <!-- Greek key border (simplified as repeated squares) -->
+  <rect x="14" y="14" width="352" height="472" fill="none"
+        stroke="#8B6010" stroke-width="1" rx="1" stroke-dasharray="6,3"/>
+  <!-- Inner border line -->
+  <rect x="18" y="18" width="344" height="464" fill="none"
+        stroke="#B8860B" stroke-width="1.5" rx="1"/>
+
+  <!-- ── GOLD GROUND (icon panel) ── -->
+  <rect x="20" y="20" width="340" height="460" fill="url(#goldPattern)" rx="1"/>
+  <!-- Subtle gold wash over pattern -->
+  <rect x="20" y="20" width="340" height="460" fill="#D4A820" opacity="0.55" rx="1"/>
+
+  <!-- ── UPPER INSCRIPTION ── -->
+  <!-- Banner -->
+  <rect x="60" y="28" width="260" height="22" fill="#8B1A1A" rx="2"
+        stroke="#C0A000" stroke-width="1"/>
+  <!-- Greek text: "Ο ΒΕΛΙΣΑΡΙΟΣ" — Belisarius -->
+  <text x="190" y="43" text-anchor="middle" font-family="serif" font-size="13"
+        font-weight="bold" fill="#FFD060" letter-spacing="2">Ο ΒΕΛΙΣΑΡΙΟΣ</text>
+
+  <!-- ── SECONDARY INSCRIPTION (smaller, lower right of head) ── -->
+  <!-- Abbreviated epithet top-left -->
+  <text x="38" y="95" font-family="serif" font-size="9" fill="#8B5A00"
+        font-style="italic">Στρατηγός</text>
+  <!-- "Strategos" = General -->
+
+  <!-- ── NIMBUS (halo — adapted as military laurel wreath style) ── -->
+  <circle cx="190" cy="148" r="52" fill="none" stroke="#FFD700" stroke-width="4" opacity="0.9"/>
+  <circle cx="190" cy="148" r="48" fill="none" stroke="#B8860B" stroke-width="1"/>
+  <!-- Decorative notches on halo -->
+  <g stroke="#FFD700" stroke-width="3" opacity="0.7">
+    <line x1="190" y1="94"  x2="190" y2="88"/>
+    <line x1="190" y1="202" x2="190" y2="208"/>
+    <line x1="136" y1="148" x2="130" y2="148"/>
+    <line x1="244" y1="148" x2="250" y2="148"/>
+    <line x1="153" y1="111" x2="149" y2="107"/>
+    <line x1="227" y1="111" x2="231" y2="107"/>
+    <line x1="153" y1="185" x2="149" y2="189"/>
+    <line x1="227" y1="185" x2="231" y2="189"/>
+  </g>
+
+  <!-- ── GROUND (bottom third — Byzantine striped earth convention) ── -->
+  <rect x="20" y="390" width="340" height="90" fill="#2A4A18" rx="0"/>
+  <rect x="20" y="405" width="340" height="60" fill="#3A5A22"/>
+  <rect x="20" y="430" width="340" height="40" fill="#4A6A2E"/>
+  <rect x="20" y="455" width="340" height="25" fill="#3A5020" rx="0"/>
+  <!-- Ground top edge -->
+  <line x1="20" y1="390" x2="360" y2="390" stroke="#1A3A0A" stroke-width="2.5"/>
+
+  <!-- ── FREQUENCY WAVES (Byzantine mandorla style, radiating from sword tip) ── -->
+  <!-- Sword tip hits at approximately x=245, y=395 -->
+  <g filter="url(#pressed)">
+    <!-- Inner arcs — teal/cyan, mandorla style -->
+    <path d="M 195 390 Q 200 415 245 418 Q 290 415 295 390"
+          fill="none" stroke="#00CCAA" stroke-width="2" opacity="0.9"/>
+    <path d="M 165 393 Q 175 430 245 434 Q 315 430 325 393"
+          fill="none" stroke="#00AACC" stroke-width="1.8" opacity="0.7"/>
+    <path d="M 95 398 Q 120 455 245 460 Q 370 455 360 400"
+          fill="none" stroke="#008899" stroke-width="1.5" opacity="0.5"/>
+    <!-- Ground cracks (dark, inked lines) -->
+    <line x1="245" y1="392" x2="222" y2="408" stroke="#1A2A0A" stroke-width="2"/>
+    <line x1="245" y1="392" x2="210" y2="400" stroke="#1A2A0A" stroke-width="1.5"/>
+    <line x1="245" y1="392" x2="268" y2="410" stroke="#1A2A0A" stroke-width="2"/>
+    <line x1="245" y1="392" x2="282" y2="402" stroke="#1A2A0A" stroke-width="1.5"/>
+    <line x1="245" y1="392" x2="240" y2="415" stroke="#1A2A0A" stroke-width="1.5"/>
+  </g>
+  <!-- Hz inscription in ground, Byzantine-style -->
+  <text x="135" y="448" text-anchor="middle" font-family="serif" font-size="8"
+        fill="#00DDBB" opacity="0.7" font-style="italic">ζ·πγ Hz</text>
+  <text x="330" y="448" text-anchor="middle" font-family="serif" font-size="8"
+        fill="#00DDBB" opacity="0.5" font-style="italic">υλβ Hz</text>
+
+  <!-- ══════════════════════════════════ -->
+  <!-- ── BELISARIUS FIGURE ── -->
+  <!-- Byzantine military, formal frontal pose, leaning slightly right,
+       both hands driving gladius down-right into earth -->
+  <!-- ══════════════════════════════════ -->
+
+  <!-- BACK LEG (left, slightly behind) -->
+  <path d="M 170 330 L 158 392" stroke="#2A1800" stroke-width="14" stroke-linecap="butt"/>
+  <path d="M 170 330 L 158 392" stroke="#6B4020" stroke-width="10" stroke-linecap="butt"/>
+  <!-- Greave (lower leg armour) -->
+  <rect x="150" y="360" width="14" height="30" rx="3"
+        fill="#B8860B" stroke="#2A1800" stroke-width="1.5"/>
+  <line x1="157" y1="362" x2="157" y2="388" stroke="#8B6010" stroke-width="1"/>
+  <!-- Boot -->
+  <path d="M 150 388 Q 148 398 165 398 Q 162 388 164 388 Z"
+        fill="#2A1A00" stroke="#1A0A00" stroke-width="1.5"/>
+
+  <!-- FRONT LEG (right, planted forward) -->
+  <path d="M 205 330 L 218 392" stroke="#2A1800" stroke-width="14" stroke-linecap="butt"/>
+  <path d="M 205 330 L 218 392" stroke="#6B4020" stroke-width="10" stroke-linecap="butt"/>
+  <!-- Greave -->
+  <rect x="213" y="360" width="14" height="30" rx="3"
+        fill="#B8860B" stroke="#2A1800" stroke-width="1.5"/>
+  <line x1="220" y1="362" x2="220" y2="388" stroke="#8B6010" stroke-width="1"/>
+  <!-- Boot -->
+  <path d="M 213 388 Q 212 398 230 398 Q 226 388 227 388 Z"
+        fill="#2A1A00" stroke="#1A0A00" stroke-width="1.5"/>
+
+  <!-- CLOAK / PALUDAMENTUM (behind figure, crimson, flowing right) -->
+  <path d="M 155 195 Q 120 240 118 310 Q 116 360 140 385
+           L 150 380 Q 135 345 140 305 Q 145 255 170 215 Z"
+        fill="#6B0A0A" stroke="#2A0000" stroke-width="1.5"/>
+  <path d="M 155 195 Q 125 235 122 308 Q 120 355 142 380
+           L 146 375 Q 128 345 132 305 Q 138 255 162 215 Z"
+        fill="#8B1A1A" opacity="0.7"/>
+  <!-- Cloak fibula (clasp at shoulder) -->
+  <circle cx="162" cy="200" r="5" fill="#FFD700" stroke="#8B6010" stroke-width="1.5"/>
+  <circle cx="162" cy="200" r="2.5" fill="#B8860B"/>
+
+  <!-- TORSO / SCALE ARMOUR (lorica squamata) -->
+  <!-- Torso base -->
+  <rect x="158" y="200" width="68" height="130" rx="5"
+        fill="#8B6510" stroke="#2A1800" stroke-width="2"/>
+  <!-- Scale pattern (rows of overlapping scales) -->
+  <g fill="#C09A20" stroke="#6B4C08" stroke-width="0.8" opacity="0.9">
+    <!-- Row 1 -->
+    <ellipse cx="170" cy="215" rx="8" ry="6"/><ellipse cx="184" cy="215" rx="8" ry="6"/>
+    <ellipse cx="198" cy="215" rx="8" ry="6"/><ellipse cx="212" cy="215" rx="8" ry="6"/>
+    <!-- Row 2 -->
+    <ellipse cx="177" cy="226" rx="8" ry="6"/><ellipse cx="191" cy="226" rx="8" ry="6"/>
+    <ellipse cx="205" cy="226" rx="8" ry="6"/><ellipse cx="163" cy="226" rx="8" ry="6"/>
+    <!-- Row 3 -->
+    <ellipse cx="170" cy="237" rx="8" ry="6"/><ellipse cx="184" cy="237" rx="8" ry="6"/>
+    <ellipse cx="198" cy="237" rx="8" ry="6"/><ellipse cx="212" cy="237" rx="8" ry="6"/>
+    <!-- Row 4 -->
+    <ellipse cx="177" cy="248" rx="8" ry="6"/><ellipse cx="191" cy="248" rx="8" ry="6"/>
+    <ellipse cx="205" cy="248" rx="8" ry="6"/><ellipse cx="163" cy="248" rx="8" ry="6"/>
+    <!-- Row 5 -->
+    <ellipse cx="170" cy="259" rx="8" ry="6"/><ellipse cx="184" cy="259" rx="8" ry="6"/>
+    <ellipse cx="198" cy="259" rx="8" ry="6"/><ellipse cx="212" cy="259" rx="8" ry="6"/>
+    <!-- Row 6 -->
+    <ellipse cx="177" cy="270" rx="8" ry="6"/><ellipse cx="191" cy="270" rx="8" ry="6"/>
+    <ellipse cx="205" cy="270" rx="8" ry="6"/><ellipse cx="163" cy="270" rx="8" ry="6"/>
+    <!-- Row 7 -->
+    <ellipse cx="170" cy="281" rx="8" ry="6"/><ellipse cx="184" cy="281" rx="8" ry="6"/>
+    <ellipse cx="198" cy="281" rx="8" ry="6"/><ellipse cx="212" cy="281" rx="8" ry="6"/>
+    <!-- Row 8 -->
+    <ellipse cx="177" cy="292" rx="8" ry="6"/><ellipse cx="191" cy="292" rx="8" ry="6"/>
+    <ellipse cx="205" cy="292" rx="8" ry="6"/><ellipse cx="163" cy="292" rx="8" ry="6"/>
+    <!-- Row 9 -->
+    <ellipse cx="170" cy="303" rx="8" ry="6"/><ellipse cx="184" cy="303" rx="8" ry="6"/>
+    <ellipse cx="198" cy="303" rx="8" ry="6"/><ellipse cx="212" cy="303" rx="8" ry="6"/>
+    <!-- Row 10 -->
+    <ellipse cx="177" cy="314" rx="8" ry="6"/><ellipse cx="191" cy="314" rx="8" ry="6"/>
+    <ellipse cx="205" cy="314" rx="8" ry="6"/><ellipse cx="163" cy="314" rx="8" ry="6"/>
+  </g>
+  <!-- Torso outline over scales -->
+  <rect x="158" y="200" width="68" height="130" rx="5"
+        fill="none" stroke="#2A1800" stroke-width="2"/>
+  <!-- Pteryges (leather strips at waist/shoulders) -->
+  <g fill="#8B5A10" stroke="#2A1800" stroke-width="1.2">
+    <rect x="158" y="326" width="9" height="18" rx="2"/>
+    <rect x="170" y="326" width="9" height="20" rx="2"/>
+    <rect x="182" y="326" width="9" height="18" rx="2"/>
+    <rect x="194" y="326" width="9" height="20" rx="2"/>
+    <rect x="206" y="326" width="9" height="18" rx="2"/>
+    <rect x="218" y="326" width="8" height="16" rx="2"/>
+  </g>
+
+  <!-- LEFT SHOULDER ARMOUR -->
+  <path d="M 155 198 Q 140 205 138 222 Q 145 230 160 225 Q 162 210 165 200 Z"
+        fill="#C09A20" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- RIGHT SHOULDER ARMOUR -->
+  <path d="M 229 198 Q 244 205 246 222 Q 239 230 224 225 Q 222 210 219 200 Z"
+        fill="#C09A20" stroke="#2A1800" stroke-width="1.5"/>
+
+  <!-- ── ARMS AND GLADIUS ── -->
+  <!-- The sword goes from approx (215,300) angled down to impact (245,392) -->
+  <!-- We show hands gripping hilt at different heights — formal two-grip pose -->
+
+  <!-- LEFT ARM (lower hand on hilt) -->
+  <path d="M 163 265 Q 158 280 195 305"
+        stroke="#2A1800" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <path d="M 163 265 Q 158 280 195 305"
+        stroke="#C4855A" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- Left hand (lower grip) -->
+  <ellipse cx="200" cy="308" rx="11" ry="9" fill="#C4855A" stroke="#2A1800" stroke-width="1.5"/>
+
+  <!-- RIGHT ARM (upper hand on hilt) -->
+  <path d="M 222 248 Q 228 258 220 285"
+        stroke="#2A1800" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <path d="M 222 248 Q 228 258 220 285"
+        stroke="#C4855A" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- Right hand (upper grip) -->
+  <ellipse cx="218" cy="288" rx="11" ry="9" fill="#C4855A" stroke="#2A1800" stroke-width="1.5"/>
+
+  <!-- THE GLADIUS (sword) -->
+  <!-- Pommel -->
+  <ellipse cx="218" cy="278" rx="10" ry="7" fill="#D4A820" stroke="#2A1800" stroke-width="2"/>
+  <!-- Grip (between pommel and crossguard) -->
+  <rect x="212" y="280" width="12" height="20" rx="3"
+        fill="#6B3A10" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- Grip wrap -->
+  <g stroke="#4A2008" stroke-width="1.5" opacity="0.7">
+    <line x1="212" y1="285" x2="224" y2="285"/>
+    <line x1="212" y1="290" x2="224" y2="290"/>
+    <line x1="212" y1="295" x2="224" y2="295"/>
+  </g>
+  <!-- Crossguard -->
+  <rect x="202" y="299" width="32" height="7" rx="2"
+        fill="#D4A820" stroke="#2A1800" stroke-width="2"/>
+  <!-- Circle decoration on crossguard -->
+  <circle cx="205" cy="302" r="3" fill="#8B6010" stroke="#2A1800" stroke-width="1"/>
+  <circle cx="231" cy="302" r="3" fill="#8B6010" stroke="#2A1800" stroke-width="1"/>
+  <!-- BLADE — broad, tapers to point at ground -->
+  <path d="M 208 306 L 245 392 L 251 392 L 222 306 Z"
+        fill="#C8C8D8" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- Blade fuller (groove down center) -->
+  <line x1="216" y1="310" x2="246" y2="390"
+        stroke="#A8A8B8" stroke-width="2" opacity="0.6"/>
+  <!-- Blade highlight -->
+  <line x1="212" y1="308" x2="246" y2="391"
+        stroke="#E8E8F0" stroke-width="1" opacity="0.5"/>
+  <!-- Sword tip glow at impact -->
+  <circle cx="246" cy="392" r="4" fill="#00FFCC" opacity="0.8" filter="url(#pressed)"/>
+
+  <!-- ── NECK ── -->
+  <rect x="182" y="185" width="20" height="18" rx="4"
+        fill="#C4855A" stroke="#2A1800" stroke-width="1.5"/>
+
+  <!-- ── HEAD (Byzantine formal — large almond eyes, elongated) ── -->
+  <!-- Head shape -->
+  <path d="M 162 142 Q 160 115 190 108 Q 220 105 222 132 Q 224 162 210 178
+           Q 200 188 190 188 Q 175 188 168 175 Q 161 162 162 142 Z"
+        fill="#C4855A" stroke="#2A1800" stroke-width="2"/>
+
+  <!-- BEARD (Belisarius was notably clean-shaven in some sources,
+       but Byzantine generals often shown with short beard) -->
+  <path d="M 170 168 Q 175 185 190 187 Q 205 185 212 168
+           Q 205 180 190 182 Q 175 180 170 168 Z"
+        fill="#4A2A10" stroke="#2A1800" stroke-width="1"/>
+
+  <!-- BYZANTINE MILITARY HELMET (dome, cheekpieces, nasal bar) -->
+  <!-- Helmet dome -->
+  <path d="M 157 140 Q 158 105 190 100 Q 222 105 225 140 L 220 148 L 162 148 Z"
+        fill="#B8860B" stroke="#2A1800" stroke-width="2"/>
+  <!-- Helmet dome highlight -->
+  <path d="M 164 135 Q 165 112 190 108 Q 210 110 215 128"
+        fill="none" stroke="#D4A820" stroke-width="1.5" opacity="0.6"/>
+  <!-- Helmet ridge (crest base) -->
+  <rect x="186" y="100" width="8" height="44" rx="2"
+        fill="#D4A820" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- Left cheekpiece -->
+  <path d="M 162 148 Q 155 158 157 175 Q 162 182 168 178 Q 165 165 164 152 Z"
+        fill="#B8860B" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- Right cheekpiece -->
+  <path d="M 220 148 Q 227 158 225 175 Q 220 182 214 178 Q 217 165 218 152 Z"
+        fill="#B8860B" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- Nasal bar (vertical nose guard) -->
+  <rect x="188" y="138" width="6" height="25" rx="2"
+        fill="#D4A820" stroke="#2A1800" stroke-width="1.5"/>
+  <!-- Helmet border decoration -->
+  <path d="M 157 148 L 186 148 M 194 148 L 225 148"
+        stroke="#D4A820" stroke-width="2"/>
+  <path d="M 157 148 Q 190 153 225 148"
+        fill="none" stroke="#8B6010" stroke-width="1"/>
+
+  <!-- EYES (Byzantine — large, almond, frontal gaze) -->
+  <!-- Left eye -->
+  <path d="M 167 148 Q 174 142 181 148 Q 174 154 167 148 Z"
+        fill="#F5E8D0" stroke="#2A1800" stroke-width="1.5"/>
+  <circle cx="174" cy="149" r="3.5" fill="#3A2010"/>
+  <circle cx="175" cy="148" r="1.2" fill="#FFFFFF" opacity="0.7"/>
+  <!-- Right eye -->
+  <path d="M 200 148 Q 207 142 214 148 Q 207 154 200 148 Z"
+        fill="#F5E8D0" stroke="#2A1800" stroke-width="1.5"/>
+  <circle cx="207" cy="149" r="3.5" fill="#3A2010"/>
+  <circle cx="208" cy="148" r="1.2" fill="#FFFFFF" opacity="0.7"/>
+  <!-- Eyebrows (thick, arched) -->
+  <path d="M 165 143 Q 173 139 181 143" stroke="#2A1000" stroke-width="2.5"
+        fill="none" stroke-linecap="round"/>
+  <path d="M 199 143 Q 207 139 215 143" stroke="#2A1000" stroke-width="2.5"
+        fill="none" stroke-linecap="round"/>
+
+  <!-- Nose (Byzantine stylised — linear, elongated) -->
+  <path d="M 190 152 L 190 164 Q 186 168 184 166 M 190 164 Q 194 168 196 166"
+        stroke="#8B5A2A" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Mouth (small, formal, slight grimace of effort) -->
+  <path d="M 181 172 Q 190 175 199 172" stroke="#5A2A10" stroke-width="1.8"
+        fill="none" stroke-linecap="round"/>
+
+  <!-- ── LOWER INSCRIPTION ── -->
+  <rect x="60" y="466" width="260" height="20" fill="#1A0A00" opacity="0.6" rx="2"
+        stroke="#8B6010" stroke-width="1"/>
+  <text x="190" y="480" text-anchor="middle" font-family="serif" font-size="10"
+        fill="#D4A820" letter-spacing="1" font-style="italic">Frequency Phaser</text>
+
+  <!-- ── CORNER ORNAMENTS ── -->
+  <g fill="#B8860B" opacity="0.6">
+    <rect x="22" y="22" width="12" height="12" rx="1"/>
+    <rect x="346" y="22" width="12" height="12" rx="1"/>
+    <rect x="22" y="466" width="12" height="12" rx="1"/>
+    <rect x="346" y="466" width="12" height="12" rx="1"/>
+  </g>
+  <g fill="#FFD700" opacity="0.8">
+    <rect x="24" y="24" width="8" height="8" rx="1"/>
+    <rect x="348" y="24" width="8" height="8" rx="1"/>
+    <rect x="24" y="468" width="8" height="8" rx="1"/>
+    <rect x="348" y="468" width="8" height="8" rx="1"/>
+  </g>
+</svg>

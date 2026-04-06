@@ -1,0 +1,20 @@
+[package]
+name = "frequency-phaser"
+version = "0.1.0"
+edition = "2021"
+description = "Console frequency generator with multi-channel oscillators and preset library"
+
+[[bin]]
+name = "frequency-phaser"
+path = "src/main.rs"
+
+[dependencies]
+cpal    = "0.15"
+ratatui = "0.29"
+crossterm = { version = "0.28", features = [] }
+anyhow  = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
