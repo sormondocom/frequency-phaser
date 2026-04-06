@@ -128,12 +128,18 @@ impl Channel {
 pub enum Filter {
     None       = 0,
     Orchestral = 1,
+    Choir      = 2,
+    BassDrum   = 3,
+    Shofar     = 4,
 }
 
 impl Filter {
     pub fn from_u32(v: u32) -> Self {
         match v {
             1 => Self::Orchestral,
+            2 => Self::Choir,
+            3 => Self::BassDrum,
+            4 => Self::Shofar,
             _ => Self::None,
         }
     }
@@ -142,6 +148,9 @@ impl Filter {
         match self {
             Self::None       => "RAW",
             Self::Orchestral => "ORCH",
+            Self::Choir      => "CHOIR",
+            Self::BassDrum   => "DRUM",
+            Self::Shofar     => "SHOFAR",
         }
     }
 
@@ -149,18 +158,27 @@ impl Filter {
         match self {
             Self::None       => "No filter",
             Self::Orchestral => "String symphony",
+            Self::Choir      => "Angelic choir",
+            Self::BassDrum   => "Tribal bass drum",
+            Self::Shofar     => "Hebrew shofar",
         }
     }
 
     pub fn next(self) -> Self {
         match self {
             Self::None       => Self::Orchestral,
-            Self::Orchestral => Self::None,
+            Self::Orchestral => Self::Choir,
+            Self::Choir      => Self::BassDrum,
+            Self::BassDrum   => Self::Shofar,
+            Self::Shofar     => Self::None,
         }
     }
 
     pub fn all() -> &'static [Filter] {
-        static ALL: [Filter; 2] = [Filter::None, Filter::Orchestral];
+        static ALL: [Filter; 5] = [
+            Filter::None, Filter::Orchestral, Filter::Choir,
+            Filter::BassDrum, Filter::Shofar,
+        ];
         &ALL
     }
 }

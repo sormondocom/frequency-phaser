@@ -96,6 +96,54 @@
   <text x="330" y="448" text-anchor="middle" font-family="serif" font-size="8"
         fill="#00DDBB" opacity="0.5" font-style="italic">υλβ Hz</text>
 
+  <!-- ══ LITURGICAL GREEK BACKGROUND INSCRIPTIONS ══ -->
+  <!-- Written as ghost text behind the figure, like fresco inscriptions -->
+
+  <!-- Top-left diagonal — "He that has ears to hear, let him hear" -->
+  <text transform="rotate(-75, 55, 200)"
+        x="55" y="200" font-family="Georgia, serif" font-size="7.5"
+        fill="#8B6010" opacity="0.22" letter-spacing="1.5">
+    Ο ΕΧΩΝ ΩΤΑ ΑΚΟΥΕΙΝ ΑΚΟΥΕΤΩ
+  </text>
+
+  <!-- Top-right diagonal — same phrase, mirrored side -->
+  <text transform="rotate(75, 325, 200)"
+        x="325" y="200" font-family="Georgia, serif" font-size="7.5"
+        fill="#8B6010" opacity="0.22" letter-spacing="1.5" text-anchor="end">
+    Ο ΕΧΩΝ ΩΤΑ ΑΚΟΥΕΙΝ ΑΚΟΥΕΤΩ
+  </text>
+
+  <!-- Left margin vertical — "He that has a heart to feel, let him feel" -->
+  <text transform="rotate(-90, 32, 270)"
+        x="32" y="270" font-family="Georgia, serif" font-size="7"
+        fill="#6B4A00" opacity="0.20" letter-spacing="1.2" text-anchor="middle">
+    Ο ΕΧΩΝ ΚΑΡΔΙΑΝ ΑΙΣΘΑΝΕΣΘΑΙ ΑΙΣΘΑΝΕΣΘΩ
+  </text>
+
+  <!-- Right margin vertical — same phrase -->
+  <text transform="rotate(90, 348, 270)"
+        x="348" y="270" font-family="Georgia, serif" font-size="7"
+        fill="#6B4A00" opacity="0.20" letter-spacing="1.2" text-anchor="middle">
+    Ο ΕΧΩΝ ΚΑΡΔΙΑΝ ΑΙΣΘΑΝΕΣΘΑΙ ΑΙΣΘΑΝΕΣΘΩ
+  </text>
+
+  <!-- Across the gold panel, faint horizontal lines of the prophecy -->
+  <!-- "For those eyes that did not see, will see many great and wondrous things" -->
+  <text x="190" y="72" text-anchor="middle" font-family="Georgia, serif" font-size="6.5"
+        fill="#7A5800" opacity="0.18" letter-spacing="1">
+    ΟΙ ΟΦΘΑΛΜΟΙ ΟΙ ΜΗ ΒΛΕΠΟΝΤΕΣ
+  </text>
+  <text x="190" y="82" text-anchor="middle" font-family="Georgia, serif" font-size="6.5"
+        fill="#7A5800" opacity="0.18" letter-spacing="1">
+    ΠΟΛΛΑ ΜΕΓΑΛΑ ΚΑΙ ΘΑΥΜΑΣΤΑ ΒΛΕΨΟΥΣΙΝ
+  </text>
+
+  <!-- Below the figure, across the ground zone -->
+  <text x="190" y="378" text-anchor="middle" font-family="Georgia, serif" font-size="6"
+        fill="#5A8A40" opacity="0.30" letter-spacing="1.5">
+    Ο ΕΧΩΝ ΩΤΑ ΑΚΟΥΕΙΝ ΑΚΟΥΕΤΩ
+  </text>
+
   <!-- ══════════════════════════════════ -->
   <!-- ── BELISARIUS FIGURE ── -->
   <!-- Byzantine military, formal frontal pose, leaning slightly right,

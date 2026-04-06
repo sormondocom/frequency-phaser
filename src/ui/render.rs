@@ -5,7 +5,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Paragraph, Wrap,
+        Block, Borders, Clear, Paragraph, Wrap,
         canvas::{Canvas, Line as CLine, Points},
     },
     Frame,
@@ -14,7 +14,7 @@ use ratatui::{
 use crate::audio::generator::Oscillator;
 use crate::presets::PRESETS;
 use crate::state::{Channel, Waveform, MAX_FREQ, MIN_FREQ};
-use crate::ui::app::{App, InputMode, fmt_freq};
+use crate::ui::app::{App, InputMode, fmt_freq, fmt_digit_zones, DIGIT_PLACE_VALUES};
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 
@@ -40,6 +40,17 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     render_main(frame, app, outer[0]);
     render_sidebar(frame, app, outer[1]);
+
+    // Modal overlays — drawn on top of everything
+    match &app.mode {
+        InputMode::DirectFreq { buffer } =>
+            render_freq_overlay(frame, buffer, area),
+        InputMode::SavePreset { freq, name_buf, .. } =>
+            render_save_overlay(frame, *freq, name_buf, area),
+        InputMode::DigitTune { cursor } =>
+            render_digit_tune_overlay(frame, app, *cursor, area),
+        _ => {}
+    }
 }
 
 // ── Main panel (oscillators + scope + status) ─────────────────────────────────
@@ -396,11 +407,23 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
 
     let msg = app.status_msg.as_deref().unwrap_or("");
 
-    let help = "[ENTER]Play  [←→]Tune  [S]Step  [PgUp/Dn]×10  [W]Wave  [F]Filter  \
-                [C]Chan  [↑↓]Vol  [Y]Poly  [P]Presets  [F1]Add  [F2]Del  [Q]Quit";
+    // Show acceleration tier when a key is held
+    let accel_str = match app.arrow_repeat {
+        0        => "",
+        1..=19   => " ›",
+        20..=39  => " ››",
+        40..=79  => " »",
+        80..=139 => " »»",
+        _        => " »»»",
+    };
+
+    let help = "[ENTER]Play  [←→]Tune(hold=accel)  [⇧←→]Coarse  [S]Step  [PgUp/Dn]×10  \
+                [W]Wave  [F]Filter  [C]Chan  [↑↓]Vol  [N]Save freq  [Y]Poly  \
+                [P]Presets  [F1]Add  [F2]Del  [Q]Quit";
 
     let line = Line::from(vec![
         Span::styled(play_str, Style::default().fg(play_color).add_modifier(Modifier::BOLD)),
+        Span::styled(accel_str, Style::default().fg(C_ACCENT).add_modifier(Modifier::BOLD)),
         Span::raw("  "),
         Span::styled(msg, Style::default().fg(C_ACCENT)),
     ]);
@@ -543,6 +566,7 @@ fn render_poly_panel(frame: &mut Frame, app: &App, area: Rect) {
 fn render_preset_list(frame: &mut Frame, app: &App, area: Rect) {
     let is_browsing   = matches!(&app.mode, InputMode::PresetBrowse { .. });
     let active_preset = app.current_preset;
+    let n_custom      = app.custom_presets.len();
 
     let (browse_sel, browse_scroll) = if let InputMode::PresetBrowse { selected, scroll } = &app.mode {
         (*selected, *scroll)
@@ -558,26 +582,73 @@ fn render_preset_list(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(C_INACTIVE)
     };
 
+    let title = if is_browsing && browse_sel < n_custom {
+        " Presets [P]  [D]elete custom "
+    } else {
+        " Presets [P] "
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Presets [P] ")
+        .title(title)
         .border_style(border_style);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let visible_h = inner.height as usize;
-    let anchor    = if is_browsing { browse_sel } else { active_preset.unwrap_or(0) };
-    let scroll    = {
-        let raw = browse_scroll;
-        if anchor >= raw + visible_h { anchor - visible_h + 1 } else { raw.min(anchor) }
-    };
-
+    let scroll    = browse_scroll;
     let mut lines: Vec<Line> = Vec::new();
-    let mut last_cat = "";
-    let mut row      = 0usize;
+    let mut row   = 0usize;
 
+    // ── Custom presets ─────────────────────────────────────────────────────
+    if n_custom > 0 {
+        if row >= scroll && lines.len() < visible_h {
+            lines.push(Line::from(Span::styled(
+                "★ Custom",
+                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+            )));
+        }
+        row += 1;
+
+        for (ci, cp) in app.custom_presets.iter().enumerate() {
+            if row >= scroll && lines.len() < visible_h {
+                let global_idx = ci;
+                let is_cursor  = is_browsing && global_idx == browse_sel;
+                let is_active  = active_preset == Some(global_idx);
+
+                let (prefix, style) = if is_cursor {
+                    ("▶", Style::default().fg(Color::Black).bg(Color::Magenta))
+                } else if is_active {
+                    ("★", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))
+                } else {
+                    ("★", Style::default().fg(Color::Yellow))
+                };
+
+                let name_trunc = if cp.name.len() > 16 { &cp.name[..16] } else { &cp.name };
+                lines.push(Line::from(Span::styled(
+                    format!("{} {:<16}", prefix, name_trunc),
+                    style,
+                )));
+            }
+            row += 1;
+        }
+
+        // Divider between custom and built-in
+        if row >= scroll && lines.len() < visible_h {
+            lines.push(Line::from(Span::styled(
+                "─────────────────────",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+        row += 1;
+    }
+
+    // ── Built-in presets ───────────────────────────────────────────────────
+    let mut last_cat = "";
     for (i, preset) in PRESETS.iter().enumerate() {
+        let global_idx = n_custom + i;
+
         if preset.category != last_cat {
             if row >= scroll && lines.len() < visible_h {
                 lines.push(Line::from(Span::styled(
@@ -590,8 +661,8 @@ fn render_preset_list(frame: &mut Frame, app: &App, area: Rect) {
         }
 
         if row >= scroll && lines.len() < visible_h {
-            let is_cursor = is_browsing && i == browse_sel;
-            let is_active = active_preset == Some(i);
+            let is_cursor = is_browsing && global_idx == browse_sel;
+            let is_active = active_preset == Some(global_idx);
 
             let (prefix, style) = if is_cursor {
                 ("▶", Style::default().fg(Color::Black).bg(C_ACTIVE))
@@ -610,7 +681,7 @@ fn render_preset_list(frame: &mut Frame, app: &App, area: Rect) {
         row += 1;
     }
 
-    // Binaural beat info — only when poly is off (poly panel already shows notes)
+    // Binaural beat info
     if !app.poly.enabled {
         let osc_count = app.state.get_osc_count();
         if osc_count >= 2 {
@@ -626,4 +697,214 @@ fn render_preset_list(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     frame.render_widget(Paragraph::new(Text::from(lines)), inner);
+}
+
+// ── Modal overlays ────────────────────────────────────────────────────────────
+
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    Rect::new(x, y, width.min(area.width), height.min(area.height))
+}
+
+/// Overlay shown during direct frequency entry.
+fn render_freq_overlay(frame: &mut Frame, buffer: &str, area: Rect) {
+    let popup = centered_rect(44, 7, area);
+    frame.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Enter Frequency ")
+        .border_style(Style::default().fg(C_ACCENT).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let range_line = Line::from(Span::styled(
+        format!("Range: {} – {}", fmt_freq(MIN_FREQ), fmt_freq(MAX_FREQ)),
+        Style::default().fg(C_INACTIVE),
+    ));
+
+    let input_line = Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{}_", buffer),
+            Style::default()
+                .fg(Color::Black)
+                .bg(C_ACCENT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" Hz", Style::default().fg(C_ACCENT)),
+    ]);
+
+    let hint_line = Line::from(Span::styled(
+        "  [Enter] apply   [Esc] cancel   then [N] to save",
+        Style::default().fg(C_INACTIVE),
+    ));
+
+    let text = Text::from(vec![
+        Line::raw(""),
+        input_line,
+        Line::raw(""),
+        range_line,
+        hint_line,
+    ]);
+    frame.render_widget(Paragraph::new(text), inner);
+}
+
+/// Digit-zone frequency scrubber overlay.
+/// Shows `DDDDD.DDD Hz` with the active column highlighted.
+/// [←→] moves cursor, [↑↓] spins the digit, [Esc//] exits.
+fn render_digit_tune_overlay(frame: &mut Frame, app: &App, cursor: u8, area: Rect) {
+    let popup = centered_rect(52, 10, area);
+    frame.render_widget(Clear, popup);
+
+    let freq  = app.state.oscillators[app.active_osc].get_freq();
+    let zones = fmt_digit_zones(freq); // "DDDDD.DDD"
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" ◈ Digit Zone Tuner ")
+        .border_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    // Build the large digit display with the cursor column highlighted.
+    // zones = "DDDDD.DDD"  (9 chars incl. '.')
+    // display columns:  0  1  2  3  4  .  5  6  7
+    // DIGIT_PLACE_VALUES index maps to col offset skipping '.'
+    let mut digit_spans: Vec<Span> = Vec::new();
+    digit_spans.push(Span::raw("  "));
+
+    let chars: Vec<char> = zones.chars().collect();
+    let mut col: u8 = 0; // digit column index (skips '.')
+    for &ch in &chars {
+        if ch == '.' {
+            digit_spans.push(Span::styled(
+                "·",
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+            ));
+            continue;
+        }
+        let is_cursor = col == cursor;
+        let style = if is_cursor {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else if col < 5 {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        };
+        digit_spans.push(Span::styled(format!("{} ", ch), style));
+        col += 1;
+    }
+    digit_spans.push(Span::styled(" Hz", Style::default().fg(C_ACTIVE)));
+
+    // Place-value label for the active column
+    let place = DIGIT_PLACE_VALUES[cursor as usize];
+    let place_label = if place >= 1.0 {
+        format!("±{} Hz per step", fmt_freq(place))
+    } else {
+        format!("±{} Hz per step", place)
+    };
+
+    // Zone labels above digits
+    let zone_label_line = Line::from(vec![
+        Span::styled(
+            "  ┌ tens of kHz ──── sub-Hz ─── mHz ┐",
+            Style::default().fg(C_INACTIVE),
+        ),
+    ]);
+
+    let digit_line = Line::from(digit_spans);
+
+    let active_line = Line::from(vec![
+        Span::raw("  "),
+        Span::styled(place_label, Style::default().fg(C_ACCENT)),
+    ]);
+
+    let hint_line = Line::from(Span::styled(
+        "  [←→] zone   [↑↓] spin   [Enter] play   [N] save   [Esc] exit",
+        Style::default().fg(C_INACTIVE),
+    ));
+
+    // Cursor position arrow
+    let arrow_offset = 2 + (cursor as usize) * 2 + if cursor >= 5 { 1 } else { 0 };
+    let arrow_line = Line::from(Span::styled(
+        format!("{:width$}▲", "", width = arrow_offset),
+        Style::default().fg(Color::Cyan),
+    ));
+
+    let text = Text::from(vec![
+        Line::raw(""),
+        zone_label_line,
+        digit_line,
+        arrow_line,
+        active_line,
+        Line::raw(""),
+        hint_line,
+        Line::raw(""),
+    ]);
+    frame.render_widget(Paragraph::new(text), inner);
+}
+
+/// Overlay shown when naming a custom preset to save.
+fn render_save_overlay(frame: &mut Frame, freq: f64, name_buf: &str, area: Rect) {
+    let popup = centered_rect(48, 8, area);
+    frame.render_widget(Clear, popup);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Save Custom Preset ")
+        .border_style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let freq_line = Line::from(vec![
+        Span::raw("  Frequency: "),
+        Span::styled(
+            fmt_freq(freq),
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        ),
+    ]);
+
+    let display_name = if name_buf.is_empty() {
+        fmt_freq(freq)
+    } else {
+        name_buf.to_string()
+    };
+
+    let name_line = Line::from(vec![
+        Span::raw("  Name:      "),
+        Span::styled(
+            format!("{}_", display_name),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+
+    let hint_line = Line::from(Span::styled(
+        "  [Enter] save   [Esc] cancel",
+        Style::default().fg(C_INACTIVE),
+    ));
+    let note_line = Line::from(Span::styled(
+        "  Leave name blank to use frequency as name.",
+        Style::default().fg(C_INACTIVE),
+    ));
+
+    let text = Text::from(vec![
+        Line::raw(""),
+        freq_line,
+        name_line,
+        Line::raw(""),
+        hint_line,
+        note_line,
+    ]);
+    frame.render_widget(Paragraph::new(text), inner);
 }

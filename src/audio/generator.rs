@@ -171,15 +171,214 @@ impl OrchestrialState {
     }
 }
 
+// ── Angelic Choir filter ──────────────────────────────────────────────────────
+//
+// Additive synthesis modelling a soprano section singing "aah":
+//   • 10 harmonics weighted by a vowel-formant-like spectral envelope
+//   • 4 ensemble voices detuned ±5 and ±12 cents (section width)
+//   • 4.5 Hz vibrato LFO at 0.4 % depth (slower, more breath-like than strings)
+//   • 3 % breath noise
+//   • Harmonics above Nyquist/2 are skipped to prevent aliasing
+
+/// Harmonic amplitudes H1–H10 shaped to approximate an "aah" vowel formant.
+/// Peaks around H3 (F1 region) and H8 (F2 region) give the choral vowel colour.
+const CHOIR_HARM_AMPS: [f64; 10] =
+    [0.80, 0.85, 0.95, 0.75, 0.55, 0.60, 0.40, 0.50, 0.35, 0.20];
+
+/// Cent detuning ratios for the four ensemble voices (±5 and ±12 cents).
+const CHOIR_DETUNE: [f64; 4] = [
+    1.002_893_56,  // +5 cents
+    0.997_113_28,  // −5 cents
+    1.006_956_53,  // +12 cents
+    0.993_082_51,  // −12 cents
+];
+
+/// Approximate RMS normalisation: sqrt(sum(H_i²) + 4·0.3²) ≈ 2.15
+const CHOIR_NORM: f64 = 1.0 / 2.15;
+
+pub struct ChoirState {
+    harm_phases:     [f64; 10], // centre-voice harmonics 1..=10
+    ensemble_phases: [f64; 4],  // detuned voices (fundamental only)
+    vibrato_phase:   f64,
+    noise:           PinkNoiseGen,
+}
+
+impl ChoirState {
+    pub fn new() -> Self {
+        Self {
+            harm_phases:     [0.0; 10],
+            ensemble_phases: [0.0; 4],
+            vibrato_phase:   0.0,
+            noise:           PinkNoiseGen::new(),
+        }
+    }
+
+    pub fn tick(&mut self, freq: f64, sample_rate: f64) -> f64 {
+        const VIBRATO_RATE:  f64 = 4.5;
+        const VIBRATO_DEPTH: f64 = 0.004;
+        const ENSEMBLE_AMP:  f64 = 0.30;
+        const NYQUIST_GUARD: f64 = 0.46; // headroom below Nyquist
+
+        let vibrato = 1.0 + VIBRATO_DEPTH * self.vibrato_phase.sin();
+        self.vibrato_phase = (self.vibrato_phase + TWO_PI * VIBRATO_RATE / sample_rate) % TWO_PI;
+        let vfreq = freq * vibrato;
+
+        // Centre voice — 10 harmonics, formant-weighted
+        let mut harmonics = 0.0f64;
+        let nyquist_limit = sample_rate * NYQUIST_GUARD;
+        for i in 0..10 {
+            let hfreq = vfreq * (i as f64 + 1.0);
+            if hfreq < nyquist_limit {
+                harmonics += CHOIR_HARM_AMPS[i] * self.harm_phases[i].sin();
+            }
+            self.harm_phases[i] = (self.harm_phases[i] + TWO_PI * hfreq / sample_rate) % TWO_PI;
+        }
+
+        // Ensemble voices — four detuned copies at the fundamental only
+        let mut ensemble = 0.0f64;
+        for i in 0..4 {
+            ensemble += self.ensemble_phases[i].sin();
+            let efreq = vfreq * CHOIR_DETUNE[i];
+            self.ensemble_phases[i] = (self.ensemble_phases[i] + TWO_PI * efreq / sample_rate) % TWO_PI;
+        }
+
+        let breath = self.noise.next() * 0.03;
+
+        (harmonics + ensemble * ENSEMBLE_AMP + breath) * CHOIR_NORM
+    }
+}
+
+// ── Tribal Bass Drum filter ───────────────────────────────────────────────────
+//
+// Models a large ceremonial drum driven continuously:
+//   • Sub-octave (0.5× freq) for deep body resonance
+//   • Fundamental + H2 + H3 for the thump "batter head" character
+//   • 5 Hz amplitude tremolo — creates the rolling, pulsing tribal feel
+//   • 8 % pink noise — skin texture and stick attack character
+//   • Heavy normalization keeps it punchy without distorting
+
+/// RMS normalisation for sub + fund + h2 + h3 mix.
+/// sqrt(0.55² + 1.0² + 0.60² + 0.25²) ≈ 1.28; tremolo avg 0.85 → /1.10
+const DRUM_NORM: f64 = 1.0 / 1.10;
+
+pub struct BassDrumState {
+    sub_phase:   f64, // 0.5× freq
+    fund_phase:  f64, // fundamental
+    h2_phase:    f64, // 2× freq
+    h3_phase:    f64, // 3× freq
+    trem_phase:  f64, // 5 Hz amplitude tremolo
+    noise:       PinkNoiseGen,
+}
+
+impl BassDrumState {
+    pub fn new() -> Self {
+        Self {
+            sub_phase:  0.0,
+            fund_phase: 0.0,
+            h2_phase:   0.0,
+            h3_phase:   0.0,
+            trem_phase: 0.0,
+            noise:      PinkNoiseGen::new(),
+        }
+    }
+
+    pub fn tick(&mut self, freq: f64, sample_rate: f64) -> f64 {
+        const TREM_RATE:  f64 = 5.0;   // Hz — tribal pulse rate
+        const TREM_DEPTH: f64 = 0.30;  // ±30 % amplitude swing
+
+        // Amplitude tremolo (the repeating "hit" feel)
+        let envelope = 1.0 - TREM_DEPTH + TREM_DEPTH * self.trem_phase.sin().abs();
+        self.trem_phase = (self.trem_phase + TWO_PI * TREM_RATE / sample_rate) % TWO_PI;
+
+        // Sub-octave — the deep chest resonance
+        let sub = self.sub_phase.sin() * 0.55;
+        self.sub_phase = (self.sub_phase + TWO_PI * (freq * 0.5) / sample_rate) % TWO_PI;
+
+        // Fundamental
+        let fund = self.fund_phase.sin();
+        self.fund_phase = (self.fund_phase + TWO_PI * freq / sample_rate) % TWO_PI;
+
+        // Second harmonic (batter-head boom)
+        let h2 = self.h2_phase.sin() * 0.60;
+        self.h2_phase = (self.h2_phase + TWO_PI * freq * 2.0 / sample_rate) % TWO_PI;
+
+        // Third harmonic (attack click)
+        let h3 = self.h3_phase.sin() * 0.25;
+        self.h3_phase = (self.h3_phase + TWO_PI * freq * 3.0 / sample_rate) % TWO_PI;
+
+        // Skin noise
+        let skin = self.noise.next() * 0.08;
+
+        (sub + fund + h2 + h3 + skin) * envelope * DRUM_NORM
+    }
+}
+
+// ── Hebrew Shofar filter ──────────────────────────────────────────────────────
+//
+// Models a ram's horn (shofar / קרן):
+//   • Strong odd harmonics (H3, H5, H7 dominant) — narrow conical bore
+//   • Intense 6 Hz vibrato at 0.8 % depth — the player's embouchure wobble
+//   • 4 % breath buzz (pink noise) for the rough, organic horn texture
+//   • No even-harmonic suppression below the 4th (real shofar has an uneven mix)
+
+/// Harmonic amplitudes H1–H10.  Odd harmonics 3, 5, 7 dominate.
+const SHOFAR_HARM_AMPS: [f64; 10] =
+    [0.60, 0.50, 0.90, 0.30, 0.80, 0.25, 0.70, 0.20, 0.50, 0.15];
+
+/// RMS normalisation: sqrt(sum(H_i²)) ≈ 1.73
+const SHOFAR_NORM: f64 = 1.0 / 1.75;
+
+pub struct ShofarState {
+    harm_phases:   [f64; 10],
+    vibrato_phase: f64,
+    noise:         PinkNoiseGen,
+}
+
+impl ShofarState {
+    pub fn new() -> Self {
+        Self {
+            harm_phases:   [0.0; 10],
+            vibrato_phase: 0.0,
+            noise:         PinkNoiseGen::new(),
+        }
+    }
+
+    pub fn tick(&mut self, freq: f64, sample_rate: f64) -> f64 {
+        const VIBRATO_RATE:  f64 = 6.0;   // Hz — keening wobble of the player
+        const VIBRATO_DEPTH: f64 = 0.008; // ±0.8 % — much more expressive than strings
+        const NYQUIST_GUARD: f64 = 0.46;
+
+        let vibrato = 1.0 + VIBRATO_DEPTH * self.vibrato_phase.sin();
+        self.vibrato_phase = (self.vibrato_phase + TWO_PI * VIBRATO_RATE / sample_rate) % TWO_PI;
+        let vfreq = freq * vibrato;
+
+        let nyquist_limit = sample_rate * NYQUIST_GUARD;
+        let mut harmonics = 0.0f64;
+        for i in 0..10 {
+            let hfreq = vfreq * (i as f64 + 1.0);
+            if hfreq < nyquist_limit {
+                harmonics += SHOFAR_HARM_AMPS[i] * self.harm_phases[i].sin();
+            }
+            self.harm_phases[i] = (self.harm_phases[i] + TWO_PI * hfreq / sample_rate) % TWO_PI;
+        }
+
+        let breath = self.noise.next() * 0.04;
+
+        (harmonics + breath) * SHOFAR_NORM
+    }
+}
+
 // ── Per-oscillator runtime ────────────────────────────────────────────────────
 //
 // Bundles the base oscillator with all filter states so the engine can route
 // through whichever is active without allocating on the hot path.
-// Adding a future filter (e.g. Choir) means adding a field and a match arm.
 
 pub struct OscillatorRt {
     pub base:       Oscillator,
     pub orchestral: OrchestrialState,
+    pub choir:      ChoirState,
+    pub bass_drum:  BassDrumState,
+    pub shofar:     ShofarState,
 }
 
 impl OscillatorRt {
@@ -187,18 +386,22 @@ impl OscillatorRt {
         Self {
             base:       Oscillator::new(),
             orchestral: OrchestrialState::new(),
+            choir:      ChoirState::new(),
+            bass_drum:  BassDrumState::new(),
+            shofar:     ShofarState::new(),
         }
     }
 
     /// Generate one sample, routing through the active filter.
     pub fn tick(&mut self, waveform: Waveform, filter: Filter, freq: f64, sample_rate: f64) -> f64 {
+        // Always advance base phase so the scope stays in sync.
+        let base_sample = self.base.tick(waveform, freq, sample_rate);
         match filter {
-            Filter::None => self.base.tick(waveform, freq, sample_rate),
-            Filter::Orchestral => {
-                // Advance base phase too so the scope stays in sync
-                self.base.tick(waveform, freq, sample_rate);
-                self.orchestral.tick(freq, sample_rate)
-            }
+            Filter::None       => base_sample,
+            Filter::Orchestral => self.orchestral.tick(freq, sample_rate),
+            Filter::Choir      => self.choir.tick(freq, sample_rate),
+            Filter::BassDrum   => self.bass_drum.tick(freq, sample_rate),
+            Filter::Shofar     => self.shofar.tick(freq, sample_rate),
         }
     }
 }
