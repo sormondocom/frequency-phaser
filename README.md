@@ -9,6 +9,12 @@
   Schumann resonances, healing tones, brainwave entrainment, chords — all from your keyboard.</em>
 </p>
 
+<p align="center">
+  <a href="http://buymeacoffee.com/sormondocom">
+    <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support%20this%20project-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"/>
+  </a>
+</p>
+
 ---
 
 ## Features
