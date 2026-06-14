@@ -1,0 +1,15 @@
+# Stack size for the main task (bytes) — needs room for display + button logic
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# FreeRTOS tick rate — 1 kHz gives 1 ms resolution for button debounce
+CONFIG_FREERTOS_HZ=1000
+
+# I2S
+CONFIG_I2S_ENABLE_DEBUG_LOG=n
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_SINGLE_APP=y
+
+# Reduce log verbosity in release
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y

@@ -1,0 +1,10 @@
+format = "EspIdf"
+
+[connection]
+serial = "COM4"
+
+[idf_format_args]
+
+[flash]
+mode = "dio"
+size = "4MB"

@@ -1,0 +1,5 @@
+/target/
+/esp32-fw/t/
+/esp32-fw/target/
+/esp32-fw/.embuild/
+**/*.rs.bk

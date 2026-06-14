@@ -1,0 +1,28 @@
+[package]
+name        = "fp-esp32"
+version     = "0.1.0"
+edition     = "2021"
+description = "ESP32 firmware for the frequency-phaser hardware device"
+
+[[bin]]
+name = "fp-esp32"
+path = "src/main.rs"
+
+[dependencies]
+fp-core         = { path = "../core" }
+esp-idf-hal     = { version = "0.46" }
+esp-idf-svc     = { version = "0.52", default-features = false, features = ["alloc"] }
+esp-idf-sys     = { version = "0.37", features = ["binstart"] }
+anyhow          = { version = "1",    features = ["backtrace"] }
+log             = "0.4"
+ssd1306         = "0.9"
+embedded-graphics = "0.8"
+embedded-hal    = "1.0"
+
+[build-dependencies]
+embuild = { version = "0.31", features = ["espidf"] }
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
