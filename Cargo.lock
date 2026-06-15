@@ -362,6 +362,7 @@ dependencies = [
  "anyhow",
  "cpal",
  "crossterm",
+ "fp-core",
  "ratatui",
  "symphonia",
 ]
