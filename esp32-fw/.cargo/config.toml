@@ -1,0 +1,14 @@
+[build]
+target     = "xtensa-esp32-espidf"
+target-dir = "K:\\fp\\esp32-fw\\t"
+
+[target.xtensa-esp32-espidf]
+linker    = "ldproxy"
+runner    = "espflash flash --chip esp32 --baud 115200 --monitor"
+rustflags = ["--cfg", "espidf_time64"]
+
+[env]
+ESP_IDF_VERSION = "v5.2.5"
+
+[unstable]
+build-std = ["std", "panic_abort"]
