@@ -178,6 +178,8 @@ The same oscillator core runs on an **ESP-WROOM-32**, producing audio via I2S an
 
 ![ESP32 hardware — MP3 browser on the OLED](assets/firmware_screen.PNG)
 
+*(She may not be pretty, but she works.  Get out there and build another version.  Make things better!)*
+
 ### Hardware
 
 | Component | Part | Notes |
