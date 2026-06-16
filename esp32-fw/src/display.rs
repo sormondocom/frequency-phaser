@@ -16,6 +16,7 @@
 ///   Row 4 (y=38..48, blue):   waveform label + filter
 ///   Row 5 (y=49..59, blue):   button hint
 use anyhow::Result;
+use core::sync::atomic::{AtomicU32, Ordering};
 use embedded_graphics::{
     geometry::Size,
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
@@ -41,6 +42,12 @@ type Display<'d> = Ssd1306<
     BufferedGraphicsMode<DisplaySize128x64>,
 >;
 
+// Marquee scroll state for the MP3 browser filename.
+// SCROLL_TICK is incremented each display frame (~20 Hz) while in MP3 mode.
+// SCROLL_SEL tracks the last-known mp3_selected index so the tick resets on navigation.
+static SCROLL_TICK: AtomicU32 = AtomicU32::new(0);
+static SCROLL_SEL:  AtomicU32 = AtomicU32::new(u32::MAX);
+
 fn format_freq(hz: f64) -> String {
     if hz < 1.0 {
         format!("{:.3} Hz", hz)
@@ -56,6 +63,35 @@ fn truncate(s: &str, max_chars: usize) -> &str {
         None         => s,
         Some((i, _)) => &s[..i],
     }
+}
+
+/// Return the visible window of `s` for a `max_visible`-character slot,
+/// animating a marquee scroll when the name is too long.
+///
+/// Timing at ~20 Hz (one tick per update() call):
+///   40 ticks ≈ 2 s  — hold at start
+///   4 ticks per char — scroll right
+///   40 ticks ≈ 2 s  — hold at end, then jump back
+fn scrolled(s: &str, max_visible: usize) -> &str {
+    let char_len = s.chars().count();
+    if char_len <= max_visible { return s; }
+
+    let max_off      = (char_len - max_visible) as u32;
+    let scroll_ticks = max_off * 4;
+    let period       = 40 + scroll_ticks + 40;
+    let t            = SCROLL_TICK.load(Ordering::Relaxed) % period;
+
+    let off = if t < 40 {
+        0
+    } else if t < 40 + scroll_ticks {
+        ((t - 40) / 4).min(max_off) as usize
+    } else {
+        max_off as usize
+    };
+
+    let start = s.char_indices().nth(off).map(|(i, _)| i).unwrap_or(0);
+    let end   = s.char_indices().nth(off + max_visible).map(|(i, _)| i).unwrap_or(s.len());
+    &s[start..end]
 }
 
 /// Draw one cycle of `wave` as a connected line plot in the band y=17..44.
@@ -205,7 +241,7 @@ fn render_mp3(display: &mut Display<'_>) {
     let sel_name = storage::audio_file_name(sel);
     if !sel_name.is_empty() {
         // x=36 leaves room for up to "99:59" (5 chars × 6 px = 30 px) + 6 px gap
-        Text::new(truncate(&sel_name, 15), Point::new(36, 25), style).draw(display).ok();
+        Text::new(scrolled(&sel_name, 15), Point::new(36, 25), style).draw(display).ok();
     }
 
     // File list — 2 visible slots, scrolled to keep selection in view.
@@ -227,7 +263,7 @@ fn render_mp3(display: &mut Display<'_>) {
                 if file_idx >= files.len() { break; }
                 let name = &files[file_idx];
                 let is_sel = file_idx == sel;
-                let display_name = truncate(name, 20);
+                let display_name = if is_sel { scrolled(name, 20) } else { truncate(name, 20) };
                 if is_sel {
                     Rectangle::new(Point::new(0, y - 9), Size::new(128, 11))
                         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
@@ -306,5 +342,17 @@ pub fn init_display<'d>(
 }
 
 pub fn update(display: &mut Display<'_>) {
+    if STATE.is_mp3_mode() {
+        let sel = STATE.mp3_selected() as u32;
+        // swap returns the previous value; if it differs the user navigated → reset tick
+        if SCROLL_SEL.swap(sel, Ordering::Relaxed) != sel {
+            SCROLL_TICK.store(0, Ordering::Relaxed);
+        } else {
+            SCROLL_TICK.fetch_add(1, Ordering::Relaxed);
+        }
+    } else {
+        // Invalidate so the next MP3-mode entry always starts fresh at offset 0
+        SCROLL_SEL.store(u32::MAX, Ordering::Relaxed);
+    }
     render(display);
 }
