@@ -10,11 +10,10 @@
 ///   SDA  → GPIO 21    SCL  → GPIO 22
 ///
 /// Tactile buttons (active-low, internal pull-up)
-///   UP     → GPIO 32  (next preset)
-///   DOWN   → GPIO 33  (prev preset)
-///   LEFT   → GPIO 18  (prev category)
-///   RIGHT  → GPIO 19  (next category)
-///   SELECT → GPIO 23  (play / stop)
+///   UP     → GPIO 32  DOWN   → GPIO 33
+///   LEFT   → GPIO 18  RIGHT  → GPIO 19
+///   SELECT → GPIO 23
+///   VOL+   → GPIO 4   VOL-   → GPIO 5
 /// ─────────────────────────────────────────────────────────────
 use anyhow::Result;
 use esp_idf_hal::peripherals::Peripherals;
@@ -24,13 +23,34 @@ mod audio;
 mod buttons;
 mod display;
 mod state;
+mod storage;
+mod upload;
 
 fn main() -> Result<()> {
     // Required esp-idf glue — must be the very first call.
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
+    // esp-idf-hal 0.46 uses the legacy i2c_driver_install() API internally.
+    // Suppress the resulting deprecation warning — there is nothing to fix in our code.
+    unsafe {
+        esp_idf_sys::esp_log_level_set(
+            b"i2c\0".as_ptr() as *const core::ffi::c_char,
+            esp_idf_sys::esp_log_level_t_ESP_LOG_ERROR,
+        );
+    }
+
     log::info!("Frequency Phaser ESP32 starting");
+
+    // Mount SPIFFS before spawning threads so storage is available to all.
+    if let Err(e) = storage::mount() {
+        log::warn!("SPIFFS unavailable: {:?}", e);
+    }
+
+    // Upload listener — blocks on UART0 RX, waiting for FPUPLOAD: commands.
+    thread::Builder::new()
+        .stack_size(16 * 1024)
+        .spawn(|| upload::run_listener())?;
 
     let peripherals = Peripherals::take()?;
 
@@ -42,7 +62,7 @@ fn main() -> Result<()> {
     let dout = peripherals.pins.gpio25;
 
     thread::Builder::new()
-        .stack_size(8 * 1024)
+        .stack_size(32 * 1024) // extra headroom for minimp3 decoder frames
         .spawn(move || {
             if let Err(e) = audio::audio_task(i2s, bck, ws, dout) {
                 log::warn!("Audio task unavailable: {:?}", e);
@@ -67,6 +87,8 @@ fn main() -> Result<()> {
         peripherals.pins.gpio18,
         peripherals.pins.gpio19,
         peripherals.pins.gpio23,
+        peripherals.pins.gpio4,
+        peripherals.pins.gpio5,
     )?;
 
     log::info!("UI loop starting");

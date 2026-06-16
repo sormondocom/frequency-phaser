@@ -6,6 +6,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crate::audio::file_filter::{decode_audio, resample};
 use crate::music::PolyConfig;
 use crate::presets::PRESETS;
+use crate::serial_upload::{self, UploadProgress};
 use crate::state::{AppState, Waveform, MAX_FREQ, MIN_FREQ};
 
 // ── Step mode ─────────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ pub struct CustomPreset {
 
 // ── Input mode ────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum InputMode {
     Normal,
     DirectFreq { buffer: String },
@@ -67,6 +68,28 @@ pub enum InputMode {
     /// Digit-zone scrubber — cursor selects a place-value column to spin.
     /// Format: `DDDDD.DDD Hz`  columns 0-4 = integer part, 5-7 = fractional.
     DigitTune { cursor: u8 },
+    /// Serial upload to ESP32 via UART.
+    Upload(Box<UploadMode>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UploadStep {
+    PortSelect,
+    FilePath,
+    Transferring,
+    Complete { bytes: usize },
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct UploadMode {
+    pub ports:      Vec<String>,
+    pub port_sel:   usize,
+    pub file_buf:   String,
+    pub file_error: Option<String>,
+    pub step:       UploadStep,
+    pub progress:   Option<UploadProgress>,
+    pub error_msg:  Option<String>,
 }
 
 // ── Digit-zone helpers ────────────────────────────────────────────────────────
@@ -142,6 +165,7 @@ impl App {
                 self.handle_save_preset(event, freq, waveform, name_buf),
             InputMode::FilePathEntry { buffer, error } => self.handle_file_path_entry(event, buffer, error),
             InputMode::DigitTune { cursor }              => self.handle_digit_tune(event, cursor),
+            InputMode::Upload(_)                         => self.handle_upload(event),
         }
     }
 
@@ -323,6 +347,20 @@ impl App {
             // Load audio file as custom filter
             KeyCode::Char('l') | KeyCode::Char('L') => {
                 self.mode = InputMode::FilePathEntry { buffer: String::new(), error: None };
+            }
+
+            // Upload file to ESP32 via serial
+            KeyCode::Char('u') | KeyCode::Char('U') => {
+                let ports = serial_upload::list_ports();
+                self.mode = InputMode::Upload(Box::new(UploadMode {
+                    ports,
+                    port_sel:   0,
+                    file_buf:   String::new(),
+                    file_error: None,
+                    step:       UploadStep::PortSelect,
+                    progress:   None,
+                    error_msg:  None,
+                }));
             }
 
             // Digit-zone tuner
@@ -681,6 +719,94 @@ impl App {
             }
         }
         true
+    }
+
+    // ── Upload mode ──────────────────────────────────────────────────────────
+
+    fn handle_upload(&mut self, event: Event) -> bool {
+        let Event::Key(KeyEvent { code, kind, .. }) = event else { return true; };
+        if kind != KeyEventKind::Press { return true; }
+
+        let InputMode::Upload(ref mut upload) = self.mode else { return true; };
+
+        match upload.step {
+            UploadStep::PortSelect => match code {
+                KeyCode::Up => {
+                    if upload.port_sel > 0 { upload.port_sel -= 1; }
+                }
+                KeyCode::Down => {
+                    if upload.port_sel + 1 < upload.ports.len() { upload.port_sel += 1; }
+                }
+                KeyCode::Enter => {
+                    if upload.ports.is_empty() {
+                        upload.error_msg = Some("No serial ports found".to_string());
+                    } else {
+                        upload.step = UploadStep::FilePath;
+                    }
+                }
+                KeyCode::Esc => { self.mode = InputMode::Normal; }
+                KeyCode::Char('r') | KeyCode::Char('R') => {
+                    upload.ports = serial_upload::list_ports();
+                }
+                _ => {}
+            },
+
+            UploadStep::FilePath => match code {
+                KeyCode::Char(c) => { upload.file_buf.push(c); upload.file_error = None; }
+                KeyCode::Backspace => { upload.file_buf.pop(); upload.file_error = None; }
+                KeyCode::Esc => { upload.step = UploadStep::PortSelect; }
+                KeyCode::Enter => {
+                    let path = upload.file_buf.trim().trim_matches('"').trim_matches('\'').to_string();
+                    if !std::path::Path::new(&path).is_file() {
+                        upload.file_error = Some(format!("File not found: {}", path));
+                    } else {
+                        let port = upload.ports[upload.port_sel].clone();
+                        upload.progress = Some(serial_upload::start_upload(port, path));
+                        upload.step = UploadStep::Transferring;
+                    }
+                }
+                _ => {}
+            },
+
+            UploadStep::Transferring => {
+                if matches!(code, KeyCode::Esc) {
+                    // Can't abort cleanly — just navigate away; thread finishes in background.
+                    self.mode = InputMode::Normal;
+                }
+            }
+
+            UploadStep::Complete { .. } | UploadStep::Failed => {
+                if matches!(code, KeyCode::Esc | KeyCode::Enter) {
+                    self.mode = InputMode::Normal;
+                }
+            }
+        }
+        true
+    }
+
+    /// Call once per frame — polls upload progress and transitions the step on completion.
+    pub fn tick(&mut self) {
+        if let InputMode::Upload(ref mut upload) = self.mode {
+            if upload.step == UploadStep::Transferring {
+                if let Some(ref prog) = upload.progress {
+                    use std::sync::atomic::Ordering;
+                    if prog.done.load(Ordering::Relaxed) {
+                        let result = prog.result.lock().unwrap().take();
+                        match result {
+                            Some(Ok(bytes)) => {
+                                upload.step = UploadStep::Complete { bytes };
+                                self.set_status(format!("Uploaded {} bytes to ESP32", bytes));
+                            }
+                            Some(Err(msg)) => {
+                                upload.error_msg = Some(msg);
+                                upload.step = UploadStep::Failed;
+                            }
+                            None => {}
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // ── Shared helpers ────────────────────────────────────────────────────────

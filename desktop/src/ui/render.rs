@@ -14,7 +14,7 @@ use ratatui::{
 use crate::audio::generator::Oscillator;
 use crate::presets::PRESETS;
 use crate::state::{Channel, Waveform, MAX_FREQ, MIN_FREQ};
-use crate::ui::app::{App, InputMode, fmt_freq, fmt_digit_zones, DIGIT_PLACE_VALUES};
+use crate::ui::app::{App, InputMode, UploadStep, fmt_freq, fmt_digit_zones, DIGIT_PLACE_VALUES};
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 
@@ -51,6 +51,8 @@ pub fn render(frame: &mut Frame, app: &App) {
             render_digit_tune_overlay(frame, app, *cursor, area),
         InputMode::FilePathEntry { buffer, error } =>
             render_file_path_overlay(frame, buffer, error.as_deref(), area),
+        InputMode::Upload(upload) =>
+            render_upload_overlay(frame, upload, area),
         _ => {}
     }
 }
@@ -61,7 +63,7 @@ fn render_main(frame: &mut Frame, app: &App, area: Rect) {
     let osc_count     = app.state.get_osc_count();
     let osc_h: u16    = 9;
     let scope_h: u16  = 7;
-    let status_h: u16 = 2;
+    let status_h: u16 = 3;
 
     let mut constraints: Vec<Constraint> = (0..osc_count)
         .map(|_| Constraint::Length(osc_h))
@@ -429,9 +431,10 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
         _        => " »»»",
     };
 
-    let help = "[ENTER]Play  [←→]Tune(hold=accel)  [⇧←→]Coarse  [S]Step  [PgUp/Dn]×10  \
-                [W]Wave  [F]Filter  [L]Load file filter  [C]Chan  [↑↓]Vol  \
-                [N]Save freq  [/]Digit tuner  [Y]Poly  [P]Presets  [F1]Add  [F2]Del  [Q]Quit";
+    let help1 = "[ENTER]Play  [←→]Hz(hold=accel)  [⇧←→]Coarse  [S]Step  \
+                 [PgUp/Dn]×10  [↑↓]Vol  [Q]Quit";
+    let help2 = "[W]Wave  [F]Filter  [L]Load  [C]Chan  [N]Save  \
+                 [/]Digit  [Y]Poly  [P]Presets  [F1]Add  [F2]Del  [U]Upload";
 
     let line = Line::from(vec![
         Span::styled(play_str, Style::default().fg(play_color).add_modifier(Modifier::BOLD)),
@@ -440,9 +443,10 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(msg, Style::default().fg(C_ACCENT)),
     ]);
 
-    let help_line = Line::from(Span::styled(help, Style::default().fg(C_INACTIVE)));
+    let help_line1 = Line::from(Span::styled(help1, Style::default().fg(C_INACTIVE)));
+    let help_line2 = Line::from(Span::styled(help2, Style::default().fg(C_INACTIVE)));
 
-    let text = Text::from(vec![line, help_line]);
+    let text = Text::from(vec![line, help_line1, help_line2]);
     frame.render_widget(Paragraph::new(text), area);
 }
 
@@ -988,4 +992,196 @@ fn render_save_overlay(frame: &mut Frame, freq: f64, name_buf: &str, area: Rect)
         note_line,
     ]);
     frame.render_widget(Paragraph::new(text), inner);
+}
+
+/// Upload overlay — walks the user through port selection, file path, and progress.
+fn render_upload_overlay(frame: &mut Frame, upload: &crate::ui::app::UploadMode, area: Rect) {
+    let popup = centered_rect(66, 16, area);
+    frame.render_widget(Clear, popup);
+
+    let (title, border_color) = match upload.step {
+        UploadStep::PortSelect         => (" Upload to ESP32 [U] — Select Port ", Color::Cyan),
+        UploadStep::FilePath           => (" Upload to ESP32 [U] — File Path ", Color::Cyan),
+        UploadStep::Transferring       => (" Upload to ESP32 [U] — Transferring… ", Color::Yellow),
+        UploadStep::Complete { .. }    => (" Upload to ESP32 [U] — Complete ", Color::Green),
+        UploadStep::Failed             => (" Upload to ESP32 [U] — Failed ", Color::Red),
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(border_color).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let mut lines: Vec<Line> = vec![Line::raw("")];
+
+    match upload.step {
+        UploadStep::PortSelect => {
+            if upload.ports.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "  No serial ports detected.",
+                    Style::default().fg(Color::Red),
+                )));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    "  Plug in your ESP32 and press [R] to refresh.",
+                    Style::default().fg(C_INACTIVE),
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    "  Select the ESP32 serial port:",
+                    Style::default().fg(C_INACTIVE),
+                )));
+                lines.push(Line::raw(""));
+                for (i, port) in upload.ports.iter().enumerate() {
+                    let is_sel = i == upload.port_sel;
+                    let style = if is_sel {
+                        Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    let prefix = if is_sel { "▶ " } else { "  " };
+                    lines.push(Line::from(Span::styled(format!("{}{}", prefix, port), style)));
+                }
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    "  [↑↓] select   [Enter] confirm   [R] refresh   [Esc] cancel",
+                    Style::default().fg(C_INACTIVE),
+                )));
+            }
+            if let Some(ref err) = upload.error_msg {
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    format!("  ✗ {}", err),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+        }
+
+        UploadStep::FilePath => {
+            let port = upload.ports.get(upload.port_sel).map(|s| s.as_str()).unwrap_or("?");
+            lines.push(Line::from(vec![
+                Span::styled("  Port: ", Style::default().fg(C_INACTIVE)),
+                Span::styled(port, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            ]));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  MP3 or WAV file to upload:",
+                Style::default().fg(C_INACTIVE),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Path: ", Style::default().fg(C_INACTIVE)),
+                Span::styled(
+                    format!("{}_", upload.file_buf),
+                    Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            if let Some(ref err) = upload.file_error {
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    format!("  ✗ {}", err),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  Tip: full path e.g. C:\\Users\\you\\Music\\clip.mp3",
+                Style::default().fg(C_INACTIVE),
+            )));
+            lines.push(Line::from(Span::styled(
+                "  Note: close any serial monitor first.",
+                Style::default().fg(Color::Yellow),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  [Enter] start upload   [Esc] back",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+
+        UploadStep::Transferring => {
+            if let Some(ref prog) = upload.progress {
+                use std::sync::atomic::Ordering;
+                let sent  = prog.sent.load(Ordering::Relaxed);
+                let total = prog.total.load(Ordering::Relaxed);
+                let frac  = prog.fraction();
+
+                lines.push(Line::from(Span::styled(
+                    "  Transferring — do not disconnect…",
+                    Style::default().fg(Color::Yellow),
+                )));
+                lines.push(Line::raw(""));
+
+                let bar_width: usize = 54;
+                let filled = (frac * bar_width as f64) as usize;
+                let bar = format!(
+                    "[{}{}] {:3.0}%",
+                    "█".repeat(filled),
+                    "░".repeat(bar_width - filled),
+                    frac * 100.0,
+                );
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", bar),
+                    Style::default().fg(Color::Cyan),
+                )));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    format!("  {}/{} bytes", sent, total),
+                    Style::default().fg(C_INACTIVE),
+                )));
+            }
+        }
+
+        UploadStep::Complete { bytes } => {
+            lines.push(Line::from(Span::styled(
+                "  Transfer complete!",
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                format!("  {} bytes written to ESP32 SPIFFS.", bytes),
+                Style::default().fg(Color::White),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  On the ESP32 select the FILE filter to play back the uploaded audio.",
+                Style::default().fg(C_INACTIVE),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  [Enter] or [Esc] to close",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+
+        UploadStep::Failed => {
+            lines.push(Line::from(Span::styled(
+                "  Upload failed.",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )));
+            if let Some(ref err) = upload.error_msg {
+                lines.push(Line::raw(""));
+                let short = if err.len() > 58 { &err[..58] } else { err.as_str() };
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", short),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  Check: ESP32 is connected, no other serial monitor is open.",
+                Style::default().fg(C_INACTIVE),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  [Enter] or [Esc] to close",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+    }
+
+    frame.render_widget(Paragraph::new(Text::from(lines)), inner);
 }

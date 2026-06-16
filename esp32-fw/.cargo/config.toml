@@ -4,11 +4,18 @@ target-dir = "K:\\fp\\esp32-fw\\t"
 
 [target.xtensa-esp32-espidf]
 linker    = "ldproxy"
-runner    = "espflash flash --chip esp32 --baud 115200 --monitor"
+runner    = "espflash flash --chip esp32 --baud 115200 --partition-table K:/fp/esp32-fw/partitions.csv --monitor"
 rustflags = ["--cfg", "espidf_time64"]
 
 [env]
 ESP_IDF_VERSION = "v5.2.5"
+# minimp3-sys uses the cc crate to compile its C source.  The generic
+# xtensa-esp-elf-gcc defaults to big-endian output; we must use the
+# ESP32-specific variant from the embuild toolchain cache, which is
+# pre-configured for little-endian ESP32 ABI.
+# Update these paths if the toolchain version in .embuild changes.
+CC_xtensa_esp32_espidf = "K:/fp/esp32-fw/.embuild/espressif/tools/xtensa-esp-elf/esp-13.2.0_20230928/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc.exe"
+AR_xtensa_esp32_espidf = "K:/fp/esp32-fw/.embuild/espressif/tools/xtensa-esp-elf/esp-13.2.0_20230928/xtensa-esp-elf/bin/xtensa-esp32-elf-ar.exe"
 
 [unstable]
 build-std = ["std", "panic_abort"]

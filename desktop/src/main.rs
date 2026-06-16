@@ -13,6 +13,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 mod audio;
 mod music;
 mod presets;
+mod serial_upload;
 mod state;
 mod ui;
 
@@ -65,6 +66,7 @@ fn run_loop(
     let mut status_frames = 0u32;
 
     loop {
+        app.tick();
         term.draw(|f| render(f, &app))?;
 
         // Age-out status message after ~3 seconds (≈ 180 frames at 60 fps)
