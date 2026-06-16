@@ -58,7 +58,7 @@ fn receive_file(args: &str) {
 
     let safe_name: String = raw_name
         .chars()
-        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
         .take(32)
         .collect();
     if safe_name.is_empty() { return; }
@@ -124,7 +124,7 @@ fn list_files() {
 fn delete_file(raw_name: &str) {
     let safe_name: String = raw_name
         .chars()
-        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
         .take(32)
         .collect();
     if safe_name.is_empty() {
