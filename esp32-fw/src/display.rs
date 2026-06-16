@@ -118,6 +118,26 @@ fn draw_status_zone(display: &mut Display<'_>) {
             .ok();
     }
 
+    // Playback progress at y=14: sparse tick marks as the track, solid 3-px dot
+    // for the current position.  Only shown when total duration is known.
+    let total = STATE.playback_total_secs();
+    if total > 0 {
+        let elapsed = STATE.playback_elapsed_secs();
+        // Sparse tick marks every 8 pixels — the "track"
+        for x in (0i32..128).step_by(8) {
+            Rectangle::new(Point::new(x, 14), Size::new(1, 1))
+                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                .draw(display)
+                .ok();
+        }
+        // The "." — 3-pixel solid block at the current position
+        let dot_x = (elapsed.min(total) * 125 / total) as i32;
+        Rectangle::new(Point::new(dot_x, 14), Size::new(3, 1))
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)
+            .ok();
+    }
+
     Line::new(Point::new(0, 15), Point::new(127, 15))
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
         .draw(display)

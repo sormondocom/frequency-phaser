@@ -12,6 +12,52 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+// ── Background device task (list / delete) ────────────────────────────────────
+
+/// Result carrier for FPLIST (Ok = filenames) and FPDELETE (Ok = empty vec).
+#[derive(Clone)]
+pub struct DeviceTask {
+    pub done:   Arc<AtomicBool>,
+    pub result: Arc<std::sync::Mutex<Option<Result<Vec<String>, String>>>>,
+}
+
+impl DeviceTask {
+    fn new() -> Self {
+        Self {
+            done:   Arc::new(AtomicBool::new(false)),
+            result: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+}
+
+/// Spawn a background thread that fetches the file list from the device.
+pub fn start_list_files(port_name: String) -> DeviceTask {
+    let task = DeviceTask::new();
+    let done_a   = Arc::clone(&task.done);
+    let result_a = Arc::clone(&task.result);
+    std::thread::spawn(move || {
+        let r = list_files_sync(&port_name).map_err(|e| e.to_string());
+        *result_a.lock().unwrap() = Some(r);
+        done_a.store(true, Ordering::Relaxed);
+    });
+    task
+}
+
+/// Spawn a background thread that deletes `filename` from the device.
+pub fn start_delete_file(port_name: String, filename: String) -> DeviceTask {
+    let task = DeviceTask::new();
+    let done_a   = Arc::clone(&task.done);
+    let result_a = Arc::clone(&task.result);
+    std::thread::spawn(move || {
+        let r = delete_file_sync(&port_name, &filename)
+            .map(|_| vec![])
+            .map_err(|e| e.to_string());
+        *result_a.lock().unwrap() = Some(r);
+        done_a.store(true, Ordering::Relaxed);
+    });
+    task
+}
+
 #[derive(Debug, Clone)]
 pub struct UploadProgress {
     pub sent:    Arc<AtomicUsize>,
@@ -145,4 +191,68 @@ fn read_line<R: std::io::Read>(reader: &mut BufReader<R>) -> anyhow::Result<Stri
     let mut line = String::new();
     reader.read_line(&mut line)?;
     Ok(line)
+}
+
+// ── Shared serial-port helper ─────────────────────────────────────────────────
+
+/// Open the port, deassert DTR/RTS so the ESP32 doesn't reset, wait for it to
+/// boot, then drain any accumulated log noise.
+fn open_serial(port_name: &str, timeout_secs: u64) -> anyhow::Result<Box<dyn serialport::SerialPort>> {
+    let mut port = serialport::new(port_name, 115_200)
+        .timeout(Duration::from_secs(timeout_secs))
+        .open()
+        .map_err(|e| anyhow::anyhow!("Cannot open {}: {}", port_name, e))?;
+    port.write_data_terminal_ready(false).ok();
+    port.write_request_to_send(false).ok();
+    std::thread::sleep(Duration::from_millis(1500));
+    let mut trash = [0u8; 256];
+    while port.bytes_to_read().unwrap_or(0) > 0 {
+        let _ = port.read(&mut trash);
+    }
+    Ok(port)
+}
+
+// ── FPLIST ────────────────────────────────────────────────────────────────────
+
+fn list_files_sync(port_name: &str) -> anyhow::Result<Vec<String>> {
+    let mut port = open_serial(port_name, 10)?;
+    let mut reader = BufReader::new(port.try_clone()?);
+
+    port.write_all(b"FPLIST\n")?;
+    port.flush()?;
+
+    let mut files = Vec::new();
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line)?;
+        let t = line.trim();
+        if t == "END" { break; }
+        // Skip blank lines and ESP-IDF log noise (lines starting with '[')
+        if !t.is_empty() && !t.starts_with('[') {
+            files.push(t.to_string());
+        }
+    }
+    Ok(files)
+}
+
+// ── FPDELETE ──────────────────────────────────────────────────────────────────
+
+fn delete_file_sync(port_name: &str, filename: &str) -> anyhow::Result<()> {
+    let mut port = open_serial(port_name, 10)?;
+    let mut reader = BufReader::new(port.try_clone()?);
+
+    port.write_all(format!("FPDELETE:{}\n", filename).as_bytes())?;
+    port.flush()?;
+
+    // Skip log noise, look for OK or ERR response
+    loop {
+        let reply = read_line(&mut reader)?;
+        let t = reply.trim();
+        if t.is_empty() || t.starts_with('[') { continue; }
+        if t == "OK" { return Ok(()); }
+        if let Some(msg) = t.strip_prefix("ERR:") {
+            anyhow::bail!("{}", msg);
+        }
+        anyhow::bail!("unexpected: {}", t);
+    }
 }

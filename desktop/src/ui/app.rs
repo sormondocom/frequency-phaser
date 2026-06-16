@@ -6,7 +6,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crate::audio::file_filter::{decode_audio, resample};
 use crate::music::PolyConfig;
 use crate::presets::PRESETS;
-use crate::serial_upload::{self, UploadProgress};
+use crate::serial_upload::{self, DeviceTask, UploadProgress};
 use crate::state::{AppState, Waveform, MAX_FREQ, MIN_FREQ};
 
 // ── Step mode ─────────────────────────────────────────────────────────────────
@@ -52,6 +52,34 @@ pub struct CustomPreset {
     pub waveform: Waveform,
 }
 
+// ── File manager mode ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FileManagerStep {
+    PortSelect,
+    Loading,
+    Browse,
+    ConfirmDelete,
+    Deleting,
+}
+
+#[derive(Clone)]
+pub struct FileManagerMode {
+    pub ports:    Vec<String>,
+    pub port_sel: usize,
+    pub step:     FileManagerStep,
+    pub files:    Vec<String>,
+    pub selected: usize,
+    pub task:     Option<DeviceTask>,
+    pub message:  Option<String>,
+}
+
+impl std::fmt::Debug for FileManagerMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FileManagerMode {{ step: {:?}, files: {} }}", self.step, self.files.len())
+    }
+}
+
 // ── Input mode ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -70,6 +98,8 @@ pub enum InputMode {
     DigitTune { cursor: u8 },
     /// Serial upload to ESP32 via UART.
     Upload(Box<UploadMode>),
+    /// Browse and delete files on the ESP32 SPIFFS.
+    FileManager(Box<FileManagerMode>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -166,6 +196,7 @@ impl App {
             InputMode::FilePathEntry { buffer, error } => self.handle_file_path_entry(event, buffer, error),
             InputMode::DigitTune { cursor }              => self.handle_digit_tune(event, cursor),
             InputMode::Upload(_)                         => self.handle_upload(event),
+            InputMode::FileManager(_)                    => self.handle_file_manager(event),
         }
     }
 
@@ -360,6 +391,20 @@ impl App {
                     step:       UploadStep::PortSelect,
                     progress:   None,
                     error_msg:  None,
+                }));
+            }
+
+            // Manage files on ESP32 SPIFFS
+            KeyCode::Char('m') | KeyCode::Char('M') => {
+                let ports = serial_upload::list_ports();
+                self.mode = InputMode::FileManager(Box::new(FileManagerMode {
+                    ports,
+                    port_sel: 0,
+                    step:     FileManagerStep::PortSelect,
+                    files:    Vec::new(),
+                    selected: 0,
+                    task:     None,
+                    message:  None,
                 }));
             }
 
@@ -784,8 +829,107 @@ impl App {
         true
     }
 
-    /// Call once per frame — polls upload progress and transitions the step on completion.
+    // ── File manager mode ─────────────────────────────────────────────────────
+
+    fn handle_file_manager(&mut self, event: Event) -> bool {
+        let Event::Key(KeyEvent { code, kind, .. }) = event else { return true; };
+        if kind != KeyEventKind::Press { return true; }
+
+        // Take the FileManager state out so we can mutate it freely, then put
+        // it back only if we're staying in this mode.
+        let InputMode::FileManager(mut fm) =
+            std::mem::replace(&mut self.mode, InputMode::Normal)
+        else {
+            return true;
+        };
+
+        let stay = match fm.step {
+            FileManagerStep::PortSelect => match code {
+                KeyCode::Up => {
+                    if fm.port_sel > 0 { fm.port_sel -= 1; }
+                    true
+                }
+                KeyCode::Down => {
+                    if fm.port_sel + 1 < fm.ports.len() { fm.port_sel += 1; }
+                    true
+                }
+                KeyCode::Char('r') | KeyCode::Char('R') => {
+                    fm.ports = serial_upload::list_ports();
+                    true
+                }
+                KeyCode::Enter => {
+                    if fm.ports.is_empty() {
+                        fm.message = Some("No serial ports found".to_string());
+                    } else {
+                        let port = fm.ports[fm.port_sel].clone();
+                        fm.task = Some(serial_upload::start_list_files(port));
+                        fm.step = FileManagerStep::Loading;
+                        fm.message = None;
+                    }
+                    true
+                }
+                KeyCode::Esc => false,
+                _ => true,
+            },
+
+            FileManagerStep::Loading | FileManagerStep::Deleting => {
+                !matches!(code, KeyCode::Esc)
+            }
+
+            FileManagerStep::Browse => match code {
+                KeyCode::Up => {
+                    if fm.selected > 0 { fm.selected -= 1; }
+                    true
+                }
+                KeyCode::Down => {
+                    if fm.selected + 1 < fm.files.len() { fm.selected += 1; }
+                    true
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    if !fm.files.is_empty() {
+                        fm.step = FileManagerStep::ConfirmDelete;
+                        fm.message = None;
+                    }
+                    true
+                }
+                KeyCode::Char('r') | KeyCode::Char('R') => {
+                    let port = fm.ports[fm.port_sel].clone();
+                    fm.task = Some(serial_upload::start_list_files(port));
+                    fm.step = FileManagerStep::Loading;
+                    fm.message = None;
+                    true
+                }
+                KeyCode::Esc => false,
+                _ => true,
+            },
+
+            FileManagerStep::ConfirmDelete => match code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    if let Some(name) = fm.files.get(fm.selected).cloned() {
+                        let port = fm.ports[fm.port_sel].clone();
+                        fm.task = Some(serial_upload::start_delete_file(port, name));
+                        fm.step = FileManagerStep::Deleting;
+                        fm.message = None;
+                    }
+                    true
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    fm.step = FileManagerStep::Browse;
+                    true
+                }
+                _ => true,
+            },
+        };
+
+        if stay {
+            self.mode = InputMode::FileManager(fm);
+        }
+        true
+    }
+
+    /// Call once per frame — polls background task progress and transitions steps.
     pub fn tick(&mut self) {
+        // Upload progress
         if let InputMode::Upload(ref mut upload) = self.mode {
             if upload.step == UploadStep::Transferring {
                 if let Some(ref prog) = upload.progress {
@@ -804,6 +948,54 @@ impl App {
                             None => {}
                         }
                     }
+                }
+            }
+        }
+
+        // File manager task completion
+        if let InputMode::FileManager(ref mut fm) = self.mode {
+            let task_done = fm.task.as_ref()
+                .map_or(false, |t| t.done.load(Ordering::Relaxed));
+            if task_done {
+                let result = {
+                    let task = fm.task.as_ref().unwrap();
+                    task.result.lock().unwrap().take()
+                };
+                let step = fm.step;
+                fm.task = None;
+                match step {
+                    FileManagerStep::Loading => match result {
+                        Some(Ok(files)) => {
+                            fm.files = files;
+                            if fm.selected >= fm.files.len() {
+                                fm.selected = fm.files.len().saturating_sub(1);
+                            }
+                            fm.step = FileManagerStep::Browse;
+                        }
+                        Some(Err(msg)) => {
+                            fm.message = Some(format!("Error: {}", msg));
+                            fm.step = FileManagerStep::PortSelect;
+                        }
+                        _ => {}
+                    },
+                    FileManagerStep::Deleting => match result {
+                        Some(Ok(_)) => {
+                            if fm.selected < fm.files.len() {
+                                let name = fm.files.remove(fm.selected);
+                                if !fm.files.is_empty() && fm.selected >= fm.files.len() {
+                                    fm.selected = fm.files.len() - 1;
+                                }
+                                fm.message = Some(format!("Deleted: {}", name));
+                            }
+                            fm.step = FileManagerStep::Browse;
+                        }
+                        Some(Err(msg)) => {
+                            fm.message = Some(format!("Delete failed: {}", msg));
+                            fm.step = FileManagerStep::Browse;
+                        }
+                        _ => {}
+                    },
+                    _ => {}
                 }
             }
         }

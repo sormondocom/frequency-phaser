@@ -16,7 +16,7 @@ use esp_idf_hal::i2s::{
 use fp_core::OscillatorRt;
 use minimp3_sys::{mp3d_sample_t, mp3dec_decode_frame, mp3dec_frame_info_t, mp3dec_init, mp3dec_t};
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::Read;
 
 use crate::state::STATE;
 use crate::storage;
@@ -29,9 +29,6 @@ pub const BUFFER_FRAMES: usize = 512;
 const MP3_BUF_CAP:   usize = 16 * 1024;
 // Refill when available compressed data drops below this.
 const MP3_REFILL_AT: usize =  4 * 1024;
-// BufReader capacity: absorbs SPIFFS page-boundary partial reads so
-// our MP3 buffer can fill completely in one refill() call.
-const FS_BUF_CAP:    usize = 32 * 1024;
 
 // ── Oscillator path ───────────────────────────────────────────────────────────
 
@@ -63,14 +60,16 @@ fn fill_oscillator(osc: &mut OscillatorRt, out: &mut Vec<u8>) {
 // exist in ESP-IDF's libc implementation.
 
 struct Mp3Player {
-    file:     BufReader<File>,
-    dec:      mp3dec_t,          // minimp3 decoder state (~4 KB)
-    buf:      Vec<u8>,           // compressed MP3 read-ahead data
-    buf_pos:  usize,             // start of unconsumed data in `buf`
-    eof:      bool,
+    file:      File,
+    file_size: usize,            // bytes on disk — used to estimate total duration
+    dec:       mp3dec_t,         // minimp3 decoder state (~4 KB)
+    buf:       Vec<u8>,          // compressed MP3 read-ahead data
+    buf_pos:   usize,            // start of unconsumed data in `buf`
+    eof:       bool,
+    total_set: bool,             // true once we've estimated total duration
 
     // Last decoded PCM frame (MINIMP3_MAX_SAMPLES_PER_FRAME = 1152*2 = 2304 samples)
-    pcm:      [mp3d_sample_t; 2304],
+    pcm:       [mp3d_sample_t; 2304],
     pcm_count: usize,            // samples per channel from the last frame
     pcm_pos:   usize,            // stereo pairs consumed from this frame
     channels:  usize,
@@ -82,14 +81,16 @@ impl Mp3Player {
     fn open(idx: usize) -> Option<Box<Self>> {
         let name = storage::audio_file_name(idx);
         if name.is_empty() { return None; }
-        let raw = File::open(storage::vfs_path(&name)).ok()?;
-        let file = BufReader::with_capacity(FS_BUF_CAP, raw);
+        let file = File::open(storage::vfs_path(&name)).ok()?;
+        let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
         let mut p = Box::new(Self {
             file,
+            file_size,
             dec: unsafe { core::mem::zeroed() },
             buf: Vec::with_capacity(MP3_BUF_CAP),
             buf_pos: 0,
             eof: false,
+            total_set: false,
             pcm: [0; 2304],
             pcm_count: 0,
             pcm_pos: 0,
@@ -112,18 +113,24 @@ impl Mp3Player {
             self.buf_pos = 0;
         }
 
-        // Fill up to MP3_BUF_CAP, looping to handle partial reads.
-        // SPIFFS may satisfy a read() with less than requested (page-aligned
-        // chunks); BufReader batches those at the FS level, but we loop here
-        // too so the MP3 decode buffer is always as full as possible.
+        // Fill up to MP3_BUF_CAP, looping to handle SPIFFS partial reads.
+        // SPIFFS may return Ok(0) transiently at block boundaries even when
+        // not at true EOF (firmware page-cache quirk).  We retry up to 3
+        // consecutive zero-byte reads before declaring EOF; a genuinely
+        // exhausted file will always return Ok(0) on every retry.
         let old_len = self.buf.len();
         if old_len >= MP3_BUF_CAP { return; }
         self.buf.resize(MP3_BUF_CAP, 0);
         let mut filled = 0usize;
+        let mut zero_streak = 0u8;
         while old_len + filled < MP3_BUF_CAP {
             match self.file.read(&mut self.buf[old_len + filled..]) {
-                Ok(0)  => { self.eof = true; break; }
-                Ok(n)  => { filled += n; }
+                Ok(0) => {
+                    zero_streak += 1;
+                    if zero_streak >= 3 { self.eof = true; break; }
+                }
+                Ok(n) => { filled += n; zero_streak = 0; }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
                 Err(_) => { self.eof = true; break; }
             }
         }
@@ -162,6 +169,15 @@ impl Mp3Player {
                 self.pcm_count = samples as usize;
                 self.channels  = info.channels as usize;
                 self.pcm_pos   = 0;
+
+                // Estimate total song duration once we have a confirmed bitrate.
+                // bitrate field is in kbps; file_size * 8 / (bitrate * 1000) = seconds.
+                if !self.total_set && info.bitrate_kbps > 0 && self.file_size > 0 {
+                    let total = (self.file_size * 8 / (info.bitrate_kbps as usize * 1_000)) as u32;
+                    STATE.set_playback_total(total);
+                    self.total_set = true;
+                }
+
                 return true;
             }
             // samples == 0: consumed an ID3/Xing tag — no audio, try next frame.
@@ -227,6 +243,7 @@ pub fn audio_task(
             if mp3.as_ref().map_or(true, |p| p.playing_idx != idx) {
                 mp3 = Mp3Player::open(idx);
                 STATE.reset_playback_timer();
+                STATE.set_playback_total(0); // cleared until first frame gives us bitrate
                 if mp3.is_none() { STATE.stop_playing(); }
             }
 
@@ -251,6 +268,9 @@ pub fn audio_task(
                 i2s_buf.resize(BUFFER_FRAMES * 2 * 4, 0);
             }
         } else {
+            if mp3.is_some() {
+                STATE.set_playback_total(0); // clear progress dot when stopping
+            }
             mp3 = None; // drop decoder when not in MP3 playback mode
             fill_oscillator(&mut osc, &mut i2s_buf);
         }

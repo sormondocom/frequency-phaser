@@ -2,11 +2,9 @@
 /// bypassing the VFS stdin layer which is not reliably connected to UART0 RX.
 ///
 /// Protocol:
-///   Desktop → ESP32 : "FPUPLOAD:<filename>:<byte_count>\n"
-///   ESP32   → Desktop: "READY\n"
-///   Desktop → ESP32 : <byte_count> bytes in 256-byte chunks
-///   ESP32   → Desktop: "ACK\n" per chunk
-///   ESP32   → Desktop: "OK:<bytes_written>\n" or "ERR:<reason>\n"
+///   FPUPLOAD:<name>:<bytes>\n  → READY\n → (chunks) → ACK\n×N → OK:<n>\n|ERR:<msg>\n
+///   FPLIST\n                   → <name>\n×N → END\n
+///   FPDELETE:<name>\n          → OK\n | ERR:<msg>\n
 use std::io::Write as _;
 
 const UART: u32 = 0;
@@ -32,6 +30,10 @@ pub fn run_listener() -> ! {
             let trimmed = line.trim_end_matches(|c| c == '\r' || c == '\n');
             if let Some(args) = trimmed.strip_prefix("FPUPLOAD:") {
                 receive_file(args);
+            } else if trimmed == "FPLIST" {
+                list_files();
+            } else if let Some(name) = trimmed.strip_prefix("FPDELETE:") {
+                delete_file(name);
             }
         }
     }
@@ -97,6 +99,49 @@ fn write_file(path: &str, total: usize) -> anyhow::Result<usize> {
 
     file.flush()?;
     Ok(received)
+}
+
+// ── File management commands ──────────────────────────────────────────────────
+
+/// FPLIST — respond with one filename per line, terminated by "END\n".
+fn list_files() {
+    log::set_max_level(log::LevelFilter::Off);
+    match std::fs::read_dir("/spiffs") {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    uart_write(format!("{}\n", name).as_bytes());
+                }
+            }
+        }
+        Err(_) => {}
+    }
+    uart_write(b"END\n");
+    log::set_max_level(log::LevelFilter::Warn);
+}
+
+/// FPDELETE:<filename> — delete the named file, respond "OK\n" or "ERR:<msg>\n".
+fn delete_file(raw_name: &str) {
+    let safe_name: String = raw_name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .take(32)
+        .collect();
+    if safe_name.is_empty() {
+        uart_write(b"ERR:invalid name\n");
+        return;
+    }
+    log::set_max_level(log::LevelFilter::Off);
+    let path = crate::storage::vfs_path(&safe_name);
+    match std::fs::remove_file(&path) {
+        Ok(())  => {
+            uart_write(b"OK\n");
+            // Refresh the in-memory audio file list so the MP3 browser stays consistent.
+            crate::storage::refresh_audio_files();
+        }
+        Err(e) => uart_write(format!("ERR:{}\n", e).as_bytes()),
+    }
+    log::set_max_level(log::LevelFilter::Warn);
 }
 
 // ── UART0 primitives ──────────────────────────────────────────────────────────

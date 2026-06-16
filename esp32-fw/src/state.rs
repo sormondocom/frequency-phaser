@@ -17,6 +17,7 @@ pub struct DeviceState {
     transfer_total:    AtomicU32,  // file size being received
     transfer_done:     AtomicU32,  // bytes received so far
     playback_samples:  AtomicU32,  // I2S frames written since last play-start
+    playback_total:    AtomicU32,  // estimated total duration of current MP3 (seconds)
 }
 
 impl DeviceState {
@@ -36,6 +37,7 @@ impl DeviceState {
             transfer_total:   AtomicU32::new(0),
             transfer_done:    AtomicU32::new(0),
             playback_samples: AtomicU32::new(0),
+            playback_total:   AtomicU32::new(0),
         }
     }
 
@@ -245,6 +247,16 @@ impl DeviceState {
     /// Elapsed playback time in whole seconds (44 100 samples/s).
     pub fn playback_elapsed_secs(&self) -> u32 {
         self.playback_samples.load(Ordering::Relaxed) / 44_100
+    }
+
+    /// Set estimated total duration from the first decoded MP3 frame.
+    pub fn set_playback_total(&self, secs: u32) {
+        self.playback_total.store(secs, Ordering::Relaxed);
+    }
+
+    /// Estimated total song duration in seconds (0 = unknown / not yet decoded).
+    pub fn playback_total_secs(&self) -> u32 {
+        self.playback_total.load(Ordering::Relaxed)
     }
 
     /// Move selection down (wraps). `count` is the current file list length.

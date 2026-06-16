@@ -14,7 +14,7 @@ use ratatui::{
 use crate::audio::generator::Oscillator;
 use crate::presets::PRESETS;
 use crate::state::{Channel, Waveform, MAX_FREQ, MIN_FREQ};
-use crate::ui::app::{App, InputMode, UploadStep, fmt_freq, fmt_digit_zones, DIGIT_PLACE_VALUES};
+use crate::ui::app::{App, FileManagerMode, FileManagerStep, InputMode, UploadStep, fmt_freq, fmt_digit_zones, DIGIT_PLACE_VALUES};
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 
@@ -53,6 +53,8 @@ pub fn render(frame: &mut Frame, app: &App) {
             render_file_path_overlay(frame, buffer, error.as_deref(), area),
         InputMode::Upload(upload) =>
             render_upload_overlay(frame, upload, area),
+        InputMode::FileManager(fm) =>
+            render_file_manager_overlay(frame, fm, area),
         _ => {}
     }
 }
@@ -434,7 +436,7 @@ fn render_status(frame: &mut Frame, app: &App, area: Rect) {
     let help1 = "[ENTER]Play  [←→]Hz(hold=accel)  [⇧←→]Coarse  [S]Step  \
                  [PgUp/Dn]×10  [↑↓]Vol  [Q]Quit";
     let help2 = "[W]Wave  [F]Filter  [L]Load  [C]Chan  [N]Save  \
-                 [/]Digit  [Y]Poly  [P]Presets  [F1]Add  [F2]Del  [U]Upload";
+                 [/]Digit  [Y]Poly  [P]Presets  [F1]Add  [F2]Del  [U]Upload  [M]Files";
 
     let line = Line::from(vec![
         Span::styled(play_str, Style::default().fg(play_color).add_modifier(Modifier::BOLD)),
@@ -992,6 +994,188 @@ fn render_save_overlay(frame: &mut Frame, freq: f64, name_buf: &str, area: Rect)
         note_line,
     ]);
     frame.render_widget(Paragraph::new(text), inner);
+}
+
+/// File manager overlay — browse and delete files on the ESP32 SPIFFS.
+fn render_file_manager_overlay(frame: &mut Frame, fm: &FileManagerMode, area: Rect) {
+    let popup = centered_rect(62, 20, area);
+    frame.render_widget(Clear, popup);
+
+    let (title, border_color) = match fm.step {
+        FileManagerStep::PortSelect    => (" ESP32 Files [M] — Select Port ",   Color::Cyan),
+        FileManagerStep::Loading       => (" ESP32 Files [M] — Fetching List… ", Color::Yellow),
+        FileManagerStep::Browse        => (" ESP32 Files [M] — Browse ",         Color::Cyan),
+        FileManagerStep::ConfirmDelete => (" ESP32 Files [M] — Confirm Delete ", Color::Red),
+        FileManagerStep::Deleting      => (" ESP32 Files [M] — Deleting… ",      Color::Yellow),
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(border_color).add_modifier(Modifier::BOLD));
+
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let mut lines: Vec<Line> = vec![Line::raw("")];
+
+    match fm.step {
+        FileManagerStep::PortSelect => {
+            if fm.ports.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "  No serial ports detected.",
+                    Style::default().fg(Color::Red),
+                )));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    "  Plug in your ESP32 and press [R] to refresh.",
+                    Style::default().fg(C_INACTIVE),
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    "  Select the ESP32 serial port:",
+                    Style::default().fg(C_INACTIVE),
+                )));
+                lines.push(Line::raw(""));
+                for (i, port) in fm.ports.iter().enumerate() {
+                    let is_sel = i == fm.port_sel;
+                    let style = if is_sel {
+                        Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    let prefix = if is_sel { "▶ " } else { "  " };
+                    lines.push(Line::from(Span::styled(format!("{}{}", prefix, port), style)));
+                }
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    "  [↑↓] select   [Enter] confirm   [R] refresh   [Esc] cancel",
+                    Style::default().fg(C_INACTIVE),
+                )));
+            }
+            if let Some(ref msg) = fm.message {
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    format!("  ✗ {}", msg),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+        }
+
+        FileManagerStep::Loading | FileManagerStep::Deleting => {
+            let msg = if fm.step == FileManagerStep::Loading {
+                "Connecting to device and fetching file list…"
+            } else {
+                "Deleting file from device…"
+            };
+            lines.push(Line::from(Span::styled(
+                format!("  {}", msg),
+                Style::default().fg(Color::Yellow),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  Note: close any serial monitor first.",
+                Style::default().fg(C_INACTIVE),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  [Esc] close overlay (operation continues in background)",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+
+        FileManagerStep::Browse => {
+            let port = fm.ports.get(fm.port_sel).map(|s| s.as_str()).unwrap_or("?");
+            lines.push(Line::from(vec![
+                Span::styled("  Port: ", Style::default().fg(C_INACTIVE)),
+                Span::styled(port, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("   {} file(s)", fm.files.len()),
+                    Style::default().fg(C_INACTIVE),
+                ),
+            ]));
+            lines.push(Line::raw(""));
+
+            if fm.files.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "  No files found on device.",
+                    Style::default().fg(C_INACTIVE),
+                )));
+            } else {
+                const MAX_VISIBLE: usize = 10;
+                let scroll = if fm.selected >= MAX_VISIBLE {
+                    fm.selected + 1 - MAX_VISIBLE
+                } else {
+                    0
+                };
+                let show_up   = scroll > 0;
+                let show_down = scroll + MAX_VISIBLE < fm.files.len();
+
+                if show_up {
+                    lines.push(Line::from(Span::styled(
+                        "  ▲ more above",
+                        Style::default().fg(C_INACTIVE),
+                    )));
+                }
+
+                for (i, name) in fm.files.iter().enumerate().skip(scroll).take(MAX_VISIBLE) {
+                    let is_sel = i == fm.selected;
+                    let style = if is_sel {
+                        Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    let prefix = if is_sel { "▶ " } else { "  " };
+                    lines.push(Line::from(Span::styled(format!("{}{}", prefix, name), style)));
+                }
+
+                if show_down {
+                    lines.push(Line::from(Span::styled(
+                        "  ▼ more below",
+                        Style::default().fg(C_INACTIVE),
+                    )));
+                }
+            }
+
+            if let Some(ref msg) = fm.message {
+                lines.push(Line::raw(""));
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", msg),
+                    Style::default().fg(C_ACCENT),
+                )));
+            }
+
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  [↑↓] select   [D] delete   [R] refresh   [Esc] close",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+
+        FileManagerStep::ConfirmDelete => {
+            let name = fm.files.get(fm.selected).map(|s| s.as_str()).unwrap_or("?");
+            lines.push(Line::from(vec![
+                Span::raw("  Delete "),
+                Span::styled(
+                    name,
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" from device?"),
+            ]));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  This cannot be undone.",
+                Style::default().fg(C_INACTIVE),
+            )));
+            lines.push(Line::raw(""));
+            lines.push(Line::from(Span::styled(
+                "  [Y] confirm delete   [N / Esc] cancel",
+                Style::default().fg(C_INACTIVE),
+            )));
+        }
+    }
+
+    frame.render_widget(Paragraph::new(Text::from(lines)), inner);
 }
 
 /// Upload overlay — walks the user through port selection, file path, and progress.
