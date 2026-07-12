@@ -106,7 +106,7 @@ fn write_file(path: &str, total: usize) -> anyhow::Result<usize> {
 /// FPLIST — respond with one filename per line, terminated by "END\n".
 fn list_files() {
     log::set_max_level(log::LevelFilter::Off);
-    match std::fs::read_dir("/spiffs") {
+    match std::fs::read_dir(crate::storage::ROOT) {
         Ok(entries) => {
             for entry in entries.flatten() {
                 if let Ok(name) = entry.file_name().into_string() {

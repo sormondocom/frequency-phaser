@@ -71,6 +71,11 @@ impl<'d> Buttons<'d> {
         })
     }
 
+    /// Raw instantaneous reading — true when the button is physically held down.
+    /// Used by the format confirmation flow before the normal poll loop starts.
+    pub fn select_held(&self) -> bool { !self.select.is_high() }
+    pub fn left_held(&self)   -> bool { !self.left.is_high() }
+
     /// Call once per UI tick (~50 ms).
     pub fn poll(&mut self, now_ms: u64) {
         let raw = [

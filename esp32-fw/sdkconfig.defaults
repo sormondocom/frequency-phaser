@@ -7,10 +7,16 @@ CONFIG_FREERTOS_HZ=1000
 # I2S
 CONFIG_I2S_ENABLE_DEBUG_LOG=n
 
-# Flash — custom partition table adds SPIFFS storage partition
+# Flash — custom partition table (factory only; SD card handles file storage)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="K:/fp/esp32-fw/partitions.csv"
+
+# FAT filesystem — long filenames (>8.3) required for audio filenames.
+# exFAT is not exposed in ESP-IDF's FatFS Kconfig; SD cards must be FAT32.
+# Cards >32 GB: use diskpart or Rufus to format as FAT32 (Windows GUI won't offer it).
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
 
 # Reduce log verbosity in release
 CONFIG_LOG_DEFAULT_LEVEL_WARN=y

@@ -8,7 +8,7 @@ runner    = "espflash flash --chip esp32 --baud 115200 --partition-table K:/fp/e
 rustflags = ["--cfg", "espidf_time64"]
 
 [env]
-ESP_IDF_VERSION = "v5.2.5"
+ESP_IDF_VERSION = "v5.3.2"
 # minimp3-sys uses the cc crate to compile its C source.  The generic
 # xtensa-esp-elf-gcc defaults to big-endian output; we must use the
 # ESP32-specific variant from the embuild toolchain cache, which is

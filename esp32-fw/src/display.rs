@@ -326,6 +326,82 @@ fn render(display: &mut Display<'_>) {
     display.flush().ok();
 }
 
+fn divider(display: &mut Display<'_>) {
+    Line::new(Point::new(0, 15), Point::new(127, 15))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(display)
+        .ok();
+}
+
+pub fn render_format_prompt(display: &mut Display<'_>) {
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    display.clear(BinaryColor::Off).ok();
+    Text::new("SD CARD", Point::new(0, 10), style).draw(display).ok();
+    divider(display);
+    Text::new("No filesystem found.", Point::new(0, 27), style).draw(display).ok();
+    Text::new("Format this card?",    Point::new(0, 38), style).draw(display).ok();
+    Text::new("SELECT: Yes",          Point::new(0, 52), style).draw(display).ok();
+    Text::new("LEFT: No",             Point::new(0, 62), style).draw(display).ok();
+    display.flush().ok();
+}
+
+pub fn render_formatting(display: &mut Display<'_>, tick: u32) {
+    const FRAMES: [&str; 4] = ["|", "/", "-", "\\"];
+    let spinner = FRAMES[(tick as usize) % 4];
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    display.clear(BinaryColor::Off).ok();
+    Text::new("FORMATTING", Point::new(0, 10), style).draw(display).ok();
+    divider(display);
+    // Animated spinner + elapsed dots on the same line
+    let dots = ".".repeat(((tick / 2) % 4) as usize);
+    let line = format!("{} Working{:<3}", spinner, dots);
+    Text::new(&line,                   Point::new(0, 30), style).draw(display).ok();
+    Text::new("Do not remove card.",   Point::new(0, 41), style).draw(display).ok();
+    Text::new("This may take ~30s.",   Point::new(0, 59), style).draw(display).ok();
+    display.flush().ok();
+}
+
+pub fn render_remove_card(display: &mut Display<'_>) {
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    display.clear(BinaryColor::Off).ok();
+    Text::new("SD CARD",              Point::new(0, 10), style).draw(display).ok();
+    divider(display);
+    Text::new("Remove card to",       Point::new(0, 30), style).draw(display).ok();
+    Text::new("boot without SD.",     Point::new(0, 41), style).draw(display).ok();
+    display.flush().ok();
+}
+
+pub fn render_no_card(display: &mut Display<'_>) {
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    display.clear(BinaryColor::Off).ok();
+    Text::new("NO SD CARD",           Point::new(0, 10), style).draw(display).ok();
+    divider(display);
+    Text::new("Card removed.",        Point::new(0, 30), style).draw(display).ok();
+    Text::new("Reinsert to continue.",Point::new(0, 41), style).draw(display).ok();
+    display.flush().ok();
+}
+
+pub fn render_card_inserted(display: &mut Display<'_>) {
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    display.clear(BinaryColor::Off).ok();
+    Text::new("SD CARD",              Point::new(0, 10), style).draw(display).ok();
+    divider(display);
+    Text::new("Card detected.",       Point::new(0, 30), style).draw(display).ok();
+    Text::new("Mounting...",          Point::new(0, 41), style).draw(display).ok();
+    display.flush().ok();
+}
+
+pub fn render_format_error(display: &mut Display<'_>) {
+    let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    display.clear(BinaryColor::Off).ok();
+    Text::new("FORMAT FAILED",        Point::new(0, 10), style).draw(display).ok();
+    divider(display);
+    Text::new("Could not format.",    Point::new(0, 30), style).draw(display).ok();
+    Text::new("Remove & try again.",  Point::new(0, 41), style).draw(display).ok();
+    Text::new("Continuing without SD",Point::new(0, 59), style).draw(display).ok();
+    display.flush().ok();
+}
+
 pub fn init_display<'d>(
     i2c: impl I2c + 'd,
     sda: impl InputPin + OutputPin + 'd,
